@@ -322,9 +322,21 @@ function getDetailsForWord(word) {
         }
         return output;
     }
-    let ipa = getIpa(word);
+
+    let ipa;
+    // ugh, contractions. CMU dict doesn't have these
+    if (word.endsWith("'ll")) {
+        ipa = getIpa(word.slice(0, -3)) + "l";
+    } else {
+        ipa = getIpa(word);
+    }
+
+    if (!ipa && word.endsWith("n't")) {
+        ipa = getIpa(word.slice(0, -3)) + "nt";
+    }
     if (!ipa) {
-        return new TripleOutput(`<div class=unknown>${word}</div>`, `<span class=unknown>${word}</span>`, `<span class=unknown>${word}</span>`)
+
+        return new TripleOutput(`<div class=unknown><div class=charbox>${word}</div></div>`, `<span class=unknown>${word}</span>`, `<span class=unknown>${word}</span>`)
 
     }
 
@@ -337,7 +349,9 @@ function getDetailsForWord(word) {
 function getDetails(words) {
     // By grouping the match, .split() returns alternating matched text and unmatched text
     // so we can attempt to preserve non-words
-    let arr = words.split(/([a-zA-Z]+)/).map((word) => getDetailsForWord(word));
+    //
+    // regex is gnarly to match contractions but not single quotation marks
+    let arr = words.split(/([a-zA-Z]+[a-zA-Z'][a-zA-Z]+|[a-zA-Z]+)/).map((word) => getDetailsForWord(word));
 
     return new TripleOutput(
          arr.map((word) => word.html).join(""),

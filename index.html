@@ -38,7 +38,7 @@
     display: inline-block;
 }
 
-.syllable,.char {
+.syllable,.char,.unknown {
     height: 1em;
     display: inline-block;
     position: relative;
@@ -52,7 +52,7 @@
     width: 0.2em;
 }
 .charbox {
-  width: 0.4em;
+  width: fit-content;
 /*  font-size: 0.8em;*/
   height: 1em;
   position: relative;
@@ -103,6 +103,7 @@
 
 .unknown {
     color: red;
+    width: fit-content;
 }
 #output {
     margin-top: 50px;

@@ -4,5 +4,11 @@ const ALICE_DICT = {
     "wug": ["wəg"],
     "wugs": ["wəgz"],
     "manish": ["məniːʃ"],
+    "don't": ["doʊnt"],
+    "can't": ["kænt"],
+    "won't": ["woʊnt"],
+    "shouldn't": ["ˈʃʊdnt"],
+    "shan't": ["ˈʃɑːnt"],
+    "aren't": ["ɑɹnt"],
     // add more here
 };
