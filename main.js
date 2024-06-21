@@ -50,7 +50,7 @@ const IPA_VOWELS = [
 ];
 
 
-const BOUNDARIES = ["ˈ", "ː", "ˌ"];
+const BOUNDARIES = ["ˈ", "ː", "ˌ", "."];
 
 
 class Consonant {
@@ -221,6 +221,8 @@ class Parser {
                    // e.g. "dearest" => "de-re-s-t"
                    // this.finishConsonant();
             }
+        } else {
+            throw new TypeError(`Got unexpected IPA: ${current}`);
         }
 
 

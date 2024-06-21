@@ -9,10 +9,15 @@
     <script src="./main.js"></script>
     <script type="text/javascript">
         function update() {
-            let details = getDetails(document.getElementById('text').value);
-            document.getElementById('output').innerHTML = details.html;
-            document.getElementById('ipa-output').innerHTML = details.ipa;
-            document.getElementById('string-output').innerHTML = details.string;
+            try {
+
+                let details = getDetails(document.getElementById('text').value);
+                document.getElementById('output').innerHTML = details.html;
+                document.getElementById('ipa-output').innerHTML = details.ipa;
+                document.getElementById('string-output').innerHTML = details.string;   
+            } catch (e) {
+                output.innerHTML = `<span class=unknown>Got error: ${e}</span>`
+            }
         }
 
     </script>
