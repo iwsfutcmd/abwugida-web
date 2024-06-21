@@ -52,10 +52,6 @@ const IPA_VOWELS = [
 
 const BOUNDARIES = ["ˈ", "ː", "ˌ"];
 
-const ALICE_DICT = {
-    "alice": ["ˈæl.ɪs"],
-    // add more here
-};
 
 class Consonant {
     constructor(consonant, vowel) {
@@ -234,7 +230,7 @@ class Parser {
 
 function getIpa(word) {
     word = word.toLowerCase();
-    let wordProns = CMU[word] || ALICE_DICT[word];
+    let wordProns = ALICE_DICT[word] || CMU[word];
     if (!wordProns) {
         return null;
     }
