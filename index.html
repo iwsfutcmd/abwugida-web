@@ -97,10 +97,19 @@
 </style>
 </head>
 <body>
+<div id=form>
 <label for=text>Text: </label><br><textarea id="text" name="text" rows=3 cols=70 onkeyup="update()"> </textarea><br>
 IPA: <span id="ipa-output"></span><br>
-Parsed: <span id="string-output"></span>
+Parsed: <span id="string-output"></span><br>
+<details>
+    <summary>How this works</summary>
+<p>This uses the <a href="http://www.speech.cs.cmu.edu/cgi-bin/cmudict">CMU pronouncing dictionary</a> to convert text into IPA (with the same CMU-to-IPA mapping
+as <a href="https://manishearth.github.io/ipadle/">IPAdle</a>), and then maps that to the Wug writing system. Currently leaving out details on how Wug works, figure it out!
 
+<p>Writing system by [redacted]. Code by Manish.
+</details>
+<button onclick="document.getElementById('form').style.display = 'none'">Hide controls (for printing)</button>
+</div>
 
 <br><br><br>
 <div id="output">

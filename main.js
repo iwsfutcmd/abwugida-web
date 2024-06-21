@@ -50,6 +50,7 @@ const IPA_VOWELS = [
     "ɪ",
     "e",
     "ɛ",
+    "ɝ",
     "æ",
     "a",
     "ʌ",
@@ -242,6 +243,7 @@ class Parser {
                    // e.g. "dearest" => "de-re-s-t"
                    // this.finishConsonant();
             }
+            this.finishConsonant();
         } else {
             throw new TypeError(`Got unexpected IPA: ${current}`);
         }
@@ -311,7 +313,7 @@ function debugWord(word) {
 function getDetailsForWord(word) {
     if (word.search(/[a-zA-Z]/) == -1) {
         // This code handles non-word content like newlines and spaces and such
-        
+
         let output = new TripleOutput("", "", "");
 
 
