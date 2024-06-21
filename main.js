@@ -47,9 +47,15 @@ const IPA_VOWELS = [
     "ɔ",
     "ʊ",
     "u",
-]
+];
+
 
 const BOUNDARIES = ["ˈ", "ː", "ˌ"];
+
+const ALICE_DICT = {
+    "alice": ["ˈæl.ɪs"],
+    // add more here
+};
 
 class Consonant {
     constructor(consonant, vowel) {
@@ -62,16 +68,17 @@ class Consonant {
 
         }
 
-        if (consonant == "blank") {
-            consonant = "blank_forward";
-        }
 
         this.consonant = consonant;
         this.vowel = vowel;
     }
 
     toString() {
-        return `${this.consonant}${this.vowelToString()}`
+        let consonant = this.consonant;
+        if (consonant == "blank") {
+            consonant = "";
+        }
+        return `${consonant}${this.vowelToString()}`
     }
 
     vowelToString() {
@@ -91,7 +98,12 @@ class Consonant {
 
 
     toHtml() {
-        let consonantHTML = `<img class=consonant src="wugz/${this.consonant}.png"/>`;
+        let consonant = this.consonant;
+
+        if (consonant == "blank") {
+            consonant = "blank_forward";
+        }
+        let consonantHTML = `<img class=consonant src="wugz/${consonant}.png"/>`;
         if (this.vowel) {
             return `<span class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel}" src="wugz/${this.vowel}_cropped.png"/></span>`
         } else {
@@ -110,8 +122,9 @@ class Consonant {
 
 
 class Parser {
-    constructor(word) {
-        this.chars = word.split('');
+    constructor(ipa) {
+        this.ipa = ipa;
+        this.chars = ipa.split('');
         this.consonants = [];
         this.consonant = "";
         this.vowel = "";
@@ -190,7 +203,6 @@ class Parser {
                    break;
                case "æ":
                case "a":
-               case "ʌ":
                case "ɑ":
                    this.vowel = "fat_ha";
                    break;
@@ -198,6 +210,8 @@ class Parser {
                case "ɔ":
                case "ʊ":
                case "u":
+               // This one's controversial
+               case "ʌ":
                    this.vowel = "dommah";
                    break;
                case "ə":
@@ -219,7 +233,8 @@ class Parser {
 }
 
 function getIpa(word) {
-    let wordProns = CMU[word];
+    word = word.toLowerCase();
+    let wordProns = CMU[word] || ALICE_DICT[word];
     if (!wordProns) {
         return null;
     }
@@ -247,17 +262,33 @@ function debugWord(word) {
     let strings = consonants.map((c) => c.toString());
     console.log(`word: ${strings.join('-')}`)
 }
-function getHtmlForWord(word) {
+function getDetailsForWord(word) {
     let ipa = getIpa(word);
     if (!ipa) {
-        return `<span class=unknown>${word}</span>`;
+        return {
+            "html": `<span class=unknown>${word}</span>`,
+            "string": `<span class=unknown>${word}</span>`,
+            "ipa": `<span class=unknown>${word}</span>`,
+
+        };
     }
 
     let consonants = parseConsonants(ipa);
     let html = consonants.map((c) => c.toHtml());
-    return html.join("");
+    let string = consonants.map((c) => c.toString());
+    return {
+        "html": html.join(""),
+        "string": string.join("-"),
+        "ipa": ipa,
+    };
 }
 
-function getHtml(words) {
-    return words.split(/\s+/).map((word) => getHtmlForWord(word)).join("<span class=space>&nbsp;</span>");
+function getDetails(words) {
+    let arr = words.split(/\s+/).filter((w) => w).map((word) => getDetailsForWord(word));
+
+    return {
+        "html": arr.map((word) => word.html).join("<span class=space>&nbsp;</span>"),
+        "string": arr.map((word) => word.string).join(" "),
+        "ipa": arr.map((word) => word.ipa).join(" "),
+    };
 }

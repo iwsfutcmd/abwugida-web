@@ -8,7 +8,10 @@
     <script src="./main.js"></script>
     <script type="text/javascript">
         function update() {
-            document.getElementById('output').innerHTML = getHtml(document.getElementById('text').value)
+            let details = getDetails(document.getElementById('text').value);
+            document.getElementById('output').innerHTML = details.html;
+            document.getElementById('ipa-output').innerHTML = details.ipa;
+            document.getElementById('string-output').innerHTML = details.string;
         }
 
     </script>
@@ -59,7 +62,10 @@
 </style>
 </head>
 <body>
-<input id="text" onkeyup="update()" />
+<label for=text>Text: </label><br><textarea id="text" name="text" rows=3 cols=70 onkeyup="update()"> </textarea><br>
+IPA: <span id="ipa-output"></span><br>
+Parsed: <span id="string-output"></span>
+
 
 <br><br><br>
 <div id="output">
