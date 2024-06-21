@@ -25,6 +25,19 @@ const CONSONANTS = [
     "θ",
 ];
 
+const VOICELESS_CONSONANTS = [
+    "f",
+    "h",
+    "k",
+    "l",
+    "p",
+    "s",
+    "ʃ",
+    "tʃ",
+    "t",
+    "θ",
+];
+
 const VOWELS = [
     "fat_ha",
     "dommah",
@@ -99,9 +112,14 @@ class Consonant {
         if (consonant == "blank") {
             consonant = "blank_forward";
         }
-        let consonantHTML = `<img class=consonant src="wugz/${consonant}.png"/>`;
+
+        let maybeVoiceless = "";
+        if (Consonant.isVoiceless(consonant)) {
+            maybeVoiceless = "voiceless-base"
+        }
+        let consonantHTML = `<img class="consonant" src="wugz/${consonant}.png"/>`;
         if (this.vowel) {
-            return `<span class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel}" src="wugz/${this.vowel}_cropped.png"/></span>`
+            return `<span class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel} ${maybeVoiceless}" src="wugz/${this.vowel}_cropped.png"/></span>`
         } else {
             return `<span class=syllable>${consonantHTML}</span>`;
         }
@@ -110,7 +128,9 @@ class Consonant {
     static isConsonant(consonant) {
         return CONSONANTS.indexOf(consonant) != -1;
     }
-
+    static isVoiceless(consonant) {
+        return VOICELESS_CONSONANTS.indexOf(consonant) != -1;
+    }
     static isVowel(vowel) {
         return VOWELS.indexOf(vowel) != -1;
     }
