@@ -62,6 +62,10 @@ class Consonant {
 
         }
 
+        if (consonant == "blank") {
+            consonant = "blank_forward";
+        }
+
         this.consonant = consonant;
         this.vowel = vowel;
     }
@@ -82,6 +86,16 @@ class Consonant {
                 return "ə";
             default:
                 return "";
+        }
+    }
+
+
+    toHtml() {
+        let consonantHTML = `<img class=consonant src="wugz/${this.consonant}.png"/>`;
+        if (this.vowel) {
+            return `<span class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel}" src="wugz/${this.vowel}_cropped.png"/></span>`
+        } else {
+            return consonantHTML;
         }
     }
 
@@ -120,7 +134,7 @@ class Parser {
         return IPA_VOWELS.indexOf(vowel) != -1;
     }
     munch() {
-        if (this.index >= this.chars.length || this.index >= 100) {
+        if (this.index >= this.chars.length) {
             this.finishConsonant();
             return false;
         }
@@ -232,4 +246,18 @@ function debugWord(word) {
 
     let strings = consonants.map((c) => c.toString());
     console.log(`word: ${strings.join('-')}`)
+}
+function getHtmlForWord(word) {
+    let ipa = getIpa(word);
+    if (!ipa) {
+        return `<span class=unknown>${word}</span>`;
+    }
+
+    let consonants = parseConsonants(ipa);
+    let html = consonants.map((c) => c.toHtml());
+    return html.join("");
+}
+
+function getHtml(words) {
+    return words.split(/\s+/).map((word) => getHtmlForWord(word)).join("<span class=space>&nbsp;</span>");
 }

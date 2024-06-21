@@ -6,8 +6,67 @@
     <title></title>
     <script src="./cmu.json.js"></script>
     <script src="./main.js"></script>
+    <script type="text/javascript">
+        function update() {
+            document.getElementById('output').innerHTML = getHtml(document.getElementById('text').value)
+        }
+
+    </script>
+
+    <style type="text/css">
+.space {
+    width: 30px;
+    display: inline-block;
+}
+.consonant {
+  width: 100px;
+  height: 100px;
+}
+.vowel {
+  width: 30px;
+  height: 30px;
+}
+.syllable {
+  position: relative;
+  top: 0;
+  left: 0;
+}
+.syllable .consonant {
+  position: relative;
+  top: 0;
+  left: 0;
+}
+.syllable .vowel {
+  position: absolute;
+  left: 50px;
+  z-index: 1;
+
+}
+
+.syllable .vowel-fat_ha,.syllable .vowel-dommah,.syllable .vowel-schwa {
+  top: -95px;
+}
+.syllable .vowel-kas_rah {
+  top: 0px;
+}
+
+.unknown {
+    color: red;
+}
+#output {
+    margin-top: 50px;
+}
+</style>
 </head>
 <body>
-hi
+<input id="text" onkeyup="update()" />
+
+<br><br><br>
+<div id="output">
+
+
+</div>
+
+<script type="text/javascript">update()</script>
 </body>
 </html>
