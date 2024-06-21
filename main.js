@@ -119,9 +119,9 @@ class Consonant {
         }
         let consonantHTML = `<img class="consonant" src="wugz/${consonant}.png"/>`;
         if (this.vowel) {
-            return `<span class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel} ${maybeVoiceless}" src="wugz/${this.vowel}_cropped.png"/></span>`
+            return `<div class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel} ${maybeVoiceless}" src="wugz/${this.vowel}_cropped.png"/></div>`
         } else {
-            return `<span class=syllable>${consonantHTML}</span>`;
+            return `<div class=syllable>${consonantHTML}</div>`;
         }
     }
 
@@ -234,6 +234,7 @@ class Parser {
                    this.vowel = "schwa";
                    break;
                case "ɚ":
+               case "ɝ":
                    this.vowel = "schwa";
                    this.finishConsonant();
                    this.consonant = "r";
@@ -250,6 +251,32 @@ class Parser {
     }
 }
 
+
+
+class TripleOutput {
+    constructor(html, string, ipa) {
+        this.html = html;
+        this.ipa = ipa;
+        this.string = string;
+
+    }
+
+    push(otherTriple) {
+        this.html += otherTriple.html;
+        this.ipa += otherTriple.ipa;
+        this.string += otherTriple.string;
+    }
+
+    static forSpecialChar(ch) {
+        if (ch == "\n") {
+            return new TripleOutput("<br>", "⏎", "⏎");
+        } else if (ch == " ") {
+            return new TripleOutput("<div class=space>&nbsp;</div>", " ", " ")
+        } else {
+            return new TripleOutput(`<div class=char><div class=charbox>${ch}</div></div>`, ch, ch);
+        }
+    }
+}
 function getIpa(word) {
     word = word.toLowerCase();
     let wordProns = ALICE_DICT[word] || CMU[word];
@@ -271,6 +298,7 @@ function parseConsonants(ipa) {
 
 }
 
+
 function debugWord(word) {
     let ipa = getIpa(word);
     console.log(`ipa: ${ipa}`);
@@ -281,32 +309,37 @@ function debugWord(word) {
     console.log(`word: ${strings.join('-')}`)
 }
 function getDetailsForWord(word) {
+    if (word.search(/[a-zA-Z]/) == -1) {
+        // This code handles non-word content like newlines and spaces and such
+        
+        let output = new TripleOutput("", "", "");
+
+
+        for (ch of word) {
+            output.push(TripleOutput.forSpecialChar(ch))
+        }
+        return output;
+    }
     let ipa = getIpa(word);
     if (!ipa) {
-        return {
-            "html": `<span class=unknown>${word}</span>`,
-            "string": `<span class=unknown>${word}</span>`,
-            "ipa": `<span class=unknown>${word}</span>`,
+        return new TripleOutput(`<div class=unknown>${word}</div>`, `<span class=unknown>${word}</span>`, `<span class=unknown>${word}</span>`)
 
-        };
     }
 
     let consonants = parseConsonants(ipa);
     let html = consonants.map((c) => c.toHtml());
     let string = consonants.map((c) => c.toString());
-    return {
-        "html": html.join(""),
-        "string": string.join("-"),
-        "ipa": ipa,
-    };
+    return new TripleOutput(html.join(""), string.join("-"), ipa)
 }
 
 function getDetails(words) {
-    let arr = words.split(/\s+/).filter((w) => w).map((word) => getDetailsForWord(word));
+    // By grouping the match, .split() returns alternating matched text and unmatched text
+    // so we can attempt to preserve non-words
+    let arr = words.split(/([a-zA-Z]+)/).map((word) => getDetailsForWord(word));
 
-    return {
-        "html": arr.map((word) => word.html).join("<span class=space>&nbsp;</span>"),
-        "string": arr.map((word) => word.string).join(" "),
-        "ipa": arr.map((word) => word.ipa).join(" "),
-    };
+    return new TripleOutput(
+         arr.map((word) => word.html).join(""),
+         arr.map((word) => word.string).join(""),
+         arr.map((word) => word.ipa).join(""),
+       );
 }
