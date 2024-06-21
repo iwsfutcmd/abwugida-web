@@ -13,6 +13,12 @@
 
                 let details = getDetails(document.getElementById('text').value);
                 document.getElementById('output').innerHTML = details.html;
+                if (details.ipa.length > 1000) {
+                    details.ipa = `<details><summary>Show IPA</summary>${details.ipa}</details>`
+                }
+                if (details.string.length > 1000) {
+                    details.string = `<details><summary>Show</summary>${details.string}</details>`
+                }
                 document.getElementById('ipa-output').innerHTML = details.ipa;
                 document.getElementById('string-output').innerHTML = details.string;   
             } catch (e) {
