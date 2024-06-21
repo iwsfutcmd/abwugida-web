@@ -1,10 +1,3 @@
-var cmu;
-
-fetch("./cmu.json")
-    .then(c => c.json())
-    .then(c => {cmu = c})
-    .catch(error => console.log(error));
-
 const CONSONANTS = [
     "b",
     "d",
@@ -36,7 +29,27 @@ const VOWELS = [
     "fat_ha",
     "dommah",
     "kas_rah",
+    "schwa",
+];
+
+const IPA_VOWELS = [
+    "i",
+    "ɪ",
+    "e",
+    "ɛ",
+    "æ",
+    "a",
+    "ʌ",
+    "ə",
+    "ɚ",
+    "ɑ",
+    "o",
+    "ɔ",
+    "ʊ",
+    "u",
 ]
+
+const BOUNDARIES = ["ˈ", "ː", "ˌ"];
 
 class Consonant {
     constructor(consonant, vowel) {
@@ -65,6 +78,10 @@ class Consonant {
                 return "o";
             case "kas_rah":
                 return "e";
+            case "schwa":
+                return "ə";
+            default:
+                return "";
         }
     }
 
@@ -78,10 +95,141 @@ class Consonant {
 }
 
 
-function getIpa(word) {}
+class Parser {
+    constructor(word) {
+        this.chars = word.split('');
+        this.consonants = [];
+        this.consonant = "";
+        this.vowel = "";
+        this.index = 0;
+    }
+
+    finishConsonant() {
+        if (this.consonant) {
+            this.consonants.push(new Consonant(this.consonant, this.vowel));
+            this.consonant = "";
+            this.vowel = "";
+        }
+    }
+
+    static isBoundary(ipa) {
+        return BOUNDARIES.indexOf(ipa) != -1;
+    }
+
+    static isIPAVowel(vowel) {
+        return IPA_VOWELS.indexOf(vowel) != -1;
+    }
+    munch() {
+        if (this.index >= this.chars.length || this.index >= 100) {
+            this.finishConsonant();
+            return false;
+        }
+        let current = this.chars[this.index];
+
+        let next = "";
+        if (this.index + 1 < this.chars.length) {
+            next = this.chars[this.index + 1];
+        }
+
+        this.index++;
+
+
+        // Fixups to go from IPA to AlicePA
+        if (current == "ɹ") {
+            current = "r";
+        } else if (current == "j") {
+            current = "y";
+        }
+
+
+        if (Parser.isBoundary(current)) {
+            // Boundaries mark the end of an orthographic syllable
+            // no matter what (no medials possible after a lengthener or stress mark)
+            this.finishConsonant();
+            return true;
+        }
+        if (Consonant.isConsonant(current)) {
+            if (this.consonant != "") {
+                this.finishConsonant();
+            }
+
+            this.consonant = current;
+
+            if (current == "t" && next == "ʃ") {
+                this.consonant = "tʃ";
+                this.index++;
+            } else if (current == "d" && next == "ʒ") {
+                this.consonant = "dʒ";
+                this.index++;
+            }
+        } else if (Parser.isIPAVowel(current)) {
+            if (this.consonant == "") {
+                this.consonant = "blank";
+            }
+
+            switch (current) {
+               case "i":
+               case "ɪ":
+               case "e":
+               case "ɛ":
+                   this.vowel = "kas_rah";
+                   break;
+               case "æ":
+               case "a":
+               case "ʌ":
+               case "ɑ":
+                   this.vowel = "fat_ha";
+                   break;
+               case "o":
+               case "ɔ":
+               case "ʊ":
+               case "u":
+                   this.vowel = "dommah";
+                   break;
+               case "ə":
+                   this.vowel = "schwa";
+                   break;
+               case "ɚ":
+                   this.vowel = "schwa";
+                   this.finishConsonant();
+                   this.consonant = "r";
+                   // Alice prefers to have coda r form a new syllable onset
+                   // e.g. "dearest" => "de-re-s-t"
+                   // this.finishConsonant();
+            }
+        }
+
+
+        return true;
+    }
+}
+
+function getIpa(word) {
+    let wordProns = CMU[word];
+    if (!wordProns) {
+        return null;
+    }
+    return wordProns[0];
+}
 
 function parseConsonants(ipa) {
+    let parser = new Parser(ipa);
+
+    while(parser.munch()) {
+
+    }
+
+    return parser.consonants;
 
 
+}
 
+function debugWord(word) {
+    let ipa = getIpa(word);
+    console.log(`ipa: ${ipa}`);
+    let consonants = parseConsonants(ipa);
+    console.log(`got ${consonants.length}  consonants`);
+
+    let strings = consonants.map((c) => c.toString());
+    console.log(`word: ${strings.join('-')}`)
 }
