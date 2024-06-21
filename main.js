@@ -334,8 +334,20 @@ function getDetailsForWord(word) {
     if (!ipa && word.endsWith("n't")) {
         ipa = getIpa(word.slice(0, -3)) + "nt";
     }
-     if (!ipa && word.endsWith("'s")) {
+    if (!ipa && word.endsWith("'s")) {
         ipa = getIpa(word.slice(0, -2)) + "s";
+    }
+    // Teach it about the wug test
+    if (!ipa && word.length > 1 && word.endsWith("s")) {
+        ipa = getIpa(word.slice(0, -1));
+        if (ipa) {
+            let last = ipa.charAt(ipa.length - 1);
+            if (Consonant.isVoiceless(last)) {
+                ipa += "s";
+            } else {
+                ipa += "z";
+            }
+        }
     }
     if (!ipa) {
 
