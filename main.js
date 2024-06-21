@@ -103,7 +103,7 @@ class Consonant {
         if (this.vowel) {
             return `<span class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel}" src="wugz/${this.vowel}_cropped.png"/></span>`
         } else {
-            return consonantHTML;
+            return `<span class=syllable>${consonantHTML}</span>`;
         }
     }
 
