@@ -10,5 +10,10 @@ const ALICE_DICT = {
     "shouldn't": ["ˈʃʊdnt"],
     "shan't": ["ˈʃɑːnt"],
     "aren't": ["ɑɹnt"],
+    "i'm": ["ˈaɪm"],
+    "i'd": ["ˈaɪd"],
+    "i've": ["ˈaɪv"],
+    "we're": ["wɪɹ"],
+    "you're": ["jɚ"],
     // add more here
 };

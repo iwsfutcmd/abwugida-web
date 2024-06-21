@@ -334,6 +334,9 @@ function getDetailsForWord(word) {
     if (!ipa && word.endsWith("n't")) {
         ipa = getIpa(word.slice(0, -3)) + "nt";
     }
+     if (!ipa && word.endsWith("'s")) {
+        ipa = getIpa(word.slice(0, -2)) + "s";
+    }
     if (!ipa) {
 
         return new TripleOutput(`<div class=unknown><div class=charbox>${word}</div></div>`, `<span class=unknown>${word}</span>`, `<span class=unknown>${word}</span>`)
