@@ -331,6 +331,7 @@ class TripleOutput {
             case "“": return "open_quotes";
             case "”": return "close_quotes";
 
+            // smaht quotes
             case "\"":
                 if (TripleOutput.AFTER_WHITESPACE) {
                     return "open_quotes";
@@ -344,7 +345,9 @@ class TripleOutput {
     }
 }
 
+// is this a hack? yes. do i care? no
 TripleOutput.AFTER_WHITESPACE = true;
+
 function getIpa(word) {
     word = word.toLowerCase();
     let wordProns = ALICE_DICT[word] || CMU[word];
@@ -430,11 +433,11 @@ function getDetailsForWord(word) {
 
 
 function getDetails(words) {
+    TripleOutput.AFTER_WHITESPACE = true;
     // By grouping the match, .split() returns alternating matched text and unmatched text
     // so we can attempt to preserve non-words
     //
     // regex is gnarly to match contractions but not single quotation marks
-    TripleOutput.AFTER_WHITESPACE = true;
     let arr = words.split(/([a-zA-Z]+[a-zA-Z'][a-zA-Z]+|[a-zA-Z]+)/).map((word) => getDetailsForWord(word));
 
     return new TripleOutput(

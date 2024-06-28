@@ -33,11 +33,13 @@
     </script>
 
     <style type="text/css">
+/* Spaces */
 .space {
     width: 0.4em;
     display: inline-block;
 }
 
+/* Most content boxes have something inside them that needs to be positioned */
 .syllable,.char,.unknown,.punct {
     height: 1em;
     display: inline-block;
@@ -51,6 +53,8 @@
     width: fit-content;
     z-index: 1;
 }
+
+/* Sizes for content boxes */
 .charbox {
   width: fit-content;
 /*  font-size: 0.8em;*/
@@ -70,6 +74,7 @@
   width: 0.3em;
   height: 0.3em;
 }
+/* width is variable */
 .punctimg {
   height: 1em;
 }
@@ -77,11 +82,13 @@
   width: 1em;
 }
 
+/* kerning happens here*/
 .syllable + .syllable,.syllable .punct {
   /* The wug images have some spacing, remove that for better æsthetics */
-/*  margin-left: -0.05em;*/
   margin-left: -0.15em;
 }
+
+/* Position the consonant and vowel within their boxes */
 .syllable .consonant {
   position: relative;
   top: 0;
@@ -91,15 +98,16 @@
   position: absolute;
   left: 0.7em;
   z-index: 1;
-
 }
 
 
-/* If vowels are on voiceless bases, they can be made to live on the wugbeak */
+/* If vowels are on voiceless bases, they can be made to live on the wugbeak.
+   Currently not making this design choice. */
 /*.syllable .vowel.voiceless-base {
   left: 0px;
 }*/
 
+/* Correctly position the vowels */
 .syllable .vowel-fat_ha,.syllable .vowel-dommah,.syllable .vowel-schwa {
   top: -0.07em;
 }
