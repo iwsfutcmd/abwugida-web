@@ -49,6 +49,7 @@
 }
 .char,.punct {
     width: fit-content;
+    z-index: 1;
 }
 .charbox {
   width: fit-content;
@@ -76,10 +77,10 @@
   width: 1em;
 }
 
-.syllable + .syllable {
+.syllable + .syllable,.syllable .punct {
   /* The wug images have some spacing, remove that for better æsthetics */
 /*  margin-left: -0.05em;*/
-  margin-right: -0.15em;
+  margin-left: -0.15em;
 }
 .syllable .consonant {
   position: relative;

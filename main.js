@@ -254,9 +254,6 @@ class Parser {
 }
 
 
-let inSmartQuote = false;
-
-
 class TripleOutput {
     constructor(html, string, ipa) {
         this.html = html;
@@ -272,6 +269,9 @@ class TripleOutput {
     }
 
     static forSpecialChar(ch) {
+        if (/\s/.test(ch)) {
+            TripleOutput.AFTER_WHITESPACE = true;
+        }
         let punct_file;
         if (ch == "\n") {
             return new TripleOutput("<br>", "⏎", "⏎");
@@ -331,12 +331,10 @@ class TripleOutput {
             case "”": return "close_quotes";
 
             case "\"":
-                if (inSmartQuote) {
-                    inSmartQuote = false;
-                    return "close_quotes";
-                } else {
-                    inSmartQuote = true;
+                if (TripleOutput.AFTER_WHITESPACE) {
                     return "open_quotes";
+                } else {
+                    return "close_quotes";
                 }
 
             default: return null;
@@ -344,6 +342,8 @@ class TripleOutput {
         }
     }
 }
+
+TripleOutput.AFTER_WHITESPACE = true;
 function getIpa(word) {
     word = word.toLowerCase();
     let wordProns = ALICE_DICT[word] || CMU[word];
@@ -387,6 +387,7 @@ function getDetailsForWord(word) {
         }
         return output;
     }
+    TripleOutput.AFTER_WHITESPACE = false;
 
     let ipa;
     // ugh, contractions. CMU dict doesn't have these
@@ -432,7 +433,7 @@ function getDetails(words) {
     // so we can attempt to preserve non-words
     //
     // regex is gnarly to match contractions but not single quotation marks
-    inSmartQuote = false;
+    TripleOutput.AFTER_WHITESPACE = true;
     let arr = words.split(/([a-zA-Z]+[a-zA-Z'][a-zA-Z]+|[a-zA-Z]+)/).map((word) => getDetailsForWord(word));
 
     return new TripleOutput(
