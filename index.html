@@ -83,7 +83,7 @@
 }
 
 /* kerning happens here*/
-.syllable + .syllable,.syllable .punct {
+.syllable + .syllable, .punct + .syllable {
   /* The wug images have some spacing, remove that for better æsthetics */
   margin-left: -0.15em;
 }
@@ -138,7 +138,7 @@ Parsed: <span id="string-output"></span><br>
 <p>This uses the <a href="http://www.speech.cs.cmu.edu/cgi-bin/cmudict">CMU pronouncing dictionary</a> to convert text into IPA (with the same CMU-to-IPA mapping
 as <a href="https://manishearth.github.io/ipadle/">IPAdle</a>), and then maps that to the Wug writing system. Currently leaving out details on how Wug works, figure it out!
 
-<p>Writing system by [redacted]. Code by Manish.
+<p>Writing system (design and art) by Alice Fares. Code by Manish.
 </details>
 <button onclick="document.getElementById('form').style.display = 'none'">Hide controls (for printing)</button>
 </div>

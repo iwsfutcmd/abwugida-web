@@ -297,7 +297,6 @@ class TripleOutput {
             case "8": return "8";
             case "9": return "9";
             case "&": return "ampersand";
-            case "'": return "apostrophe";
             case "*": return "asterisk";
             case "@": return "at";
             case "\\": return "backslash";
@@ -338,7 +337,12 @@ class TripleOutput {
                 } else {
                     return "close_quotes";
                 }
-
+            case "'":
+                if (TripleOutput.AFTER_WHITESPACE) {
+                    return "open_quote";
+                } else {
+                    return "apostrophe";
+                }
             default: return null;
 
         }
