@@ -326,6 +326,7 @@ class TripleOutput {
             case ";": return "semicolon";
             case "/": return "slash";
             case "~": return "tilde";
+            case ".": return "period";
 
             case "“": return "open_quotes";
             case "”": return "close_quotes";
