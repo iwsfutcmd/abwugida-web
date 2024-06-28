@@ -254,6 +254,8 @@ class Parser {
 }
 
 
+let inSmartQuote = false;
+
 
 class TripleOutput {
     constructor(html, string, ipa) {
@@ -270,12 +272,75 @@ class TripleOutput {
     }
 
     static forSpecialChar(ch) {
+        let punct_file;
         if (ch == "\n") {
             return new TripleOutput("<br>", "⏎", "⏎");
         } else if (ch == " ") {
             return new TripleOutput("<div class=space>&nbsp;</div>", " ", " ")
+        } else if (punct_file = TripleOutput.punctuationFileName(ch)) {
+            return new TripleOutput(`<div class=punct><img class=punctimg src="wugz/punct/${punct_file}.png"></div>`, ch, ch);
         } else {
             return new TripleOutput(`<div class=char><div class=charbox>${ch}</div></div>`, ch, ch);
+        }
+    }
+
+    static punctuationFileName(ch) {
+        switch (ch) {
+            case "0": return "0";
+            case "1": return "1";
+            case "2": return "2";
+            case "3": return "3";
+            case "4": return "4";
+            case "5": return "5";
+            case "6": return "6";
+            case "7": return "7";
+            case "8": return "8";
+            case "9": return "9";
+            case "&": return "ampersand";
+            case "'": return "apostrophe";
+            case "*": return "asterisk";
+            case "@": return "at";
+            case "\\": return "backslash";
+            case "^": return "caret";
+            case "}": return "close_brace";
+            case "]": return "close_bracket";
+            case ")": return "close_paren";
+            case ":": return "colon";
+            case ",": return "comma";
+            case "$": return "dollar";
+            case "—": return "em_dash";
+            case "–": return "en_dash";
+            case "=": return "equals";
+            case "!": return "exclamation";
+            case ">": return "gt";
+            case "-": return "hyphen";
+            case "<": return "lt";
+            case "{": return "open_brace";
+            case "[": return "open_bracket";
+            case "(": return "open_paren";
+            case "%": return "percent";
+            case "|": return "pipe";
+            case "+": return "plus";
+            case "#": return "pound";
+            case "?": return "question";
+            case ";": return "semicolon";
+            case "/": return "slash";
+            case "~": return "tilde";
+
+            case "“": return "open_quotes";
+            case "”": return "close_quotes";
+
+            case "\"":
+                if (inSmartQuote) {
+                    inSmartQuote = false;
+                    return "close_quotes";
+                } else {
+                    inSmartQuote = true;
+                    return "open_quotes";
+                }
+
+            default: return null;
+
         }
     }
 }
@@ -361,11 +426,13 @@ function getDetailsForWord(word) {
     return new TripleOutput(html.join(""), string.join("-"), ipa)
 }
 
+
 function getDetails(words) {
     // By grouping the match, .split() returns alternating matched text and unmatched text
     // so we can attempt to preserve non-words
     //
     // regex is gnarly to match contractions but not single quotation marks
+    inSmartQuote = false;
     let arr = words.split(/([a-zA-Z]+[a-zA-Z'][a-zA-Z]+|[a-zA-Z]+)/).map((word) => getDetailsForWord(word));
 
     return new TripleOutput(

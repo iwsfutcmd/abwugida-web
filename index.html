@@ -38,7 +38,7 @@
     display: inline-block;
 }
 
-.syllable,.char,.unknown {
+.syllable,.char,.unknown,.punct {
     height: 1em;
     display: inline-block;
     position: relative;
@@ -47,7 +47,7 @@
     margin-bottom: 0.2em;
     vertical-align: middle;
 }
-.char {
+.char,.punct {
     width: fit-content;
 }
 .charbox {
@@ -69,11 +69,17 @@
   width: 0.3em;
   height: 0.3em;
 }
+.punctimg {
+  height: 1em;
+}
 .syllable {
+  width: 1em;
+}
+
+.syllable + .syllable {
   /* The wug images have some spacing, remove that for better æsthetics */
 /*  margin-left: -0.05em;*/
   margin-right: -0.15em;
-  width: 1em;
 }
 .syllable .consonant {
   position: relative;
