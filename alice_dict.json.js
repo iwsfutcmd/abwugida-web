@@ -15,5 +15,6 @@ const ALICE_DICT = {
     "i've": ["ˈaɪv"],
     "we're": ["wɪɹ"],
     "you're": ["jɚ"],
+    "crinkle": ["ˈkɹɪŋkəl"],
     // add more here
 };
