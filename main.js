@@ -120,7 +120,7 @@ class Consonant {
         }
         let consonantHTML = `<img class="consonant" src="wugz/${consonant}.png"/>`;
         if (this.vowel) {
-            return `<div class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel} ${maybeVoiceless}" src="wugz/${this.vowel}_cropped.png"/></div>`
+            return `<div class=syllable>${consonantHTML}<img class="vowel vowel-${this.vowel} ${maybeVoiceless}" src="wugz/vowels/${this.vowel}_cropped.png"/></div>`
         } else {
             return `<div class=syllable>${consonantHTML}</div>`;
         }
