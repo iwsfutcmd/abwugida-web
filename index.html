@@ -67,7 +67,7 @@
   vertical-align: -0.1em;
 }
 .consonant {
-  width: 1em;
+  width: 0.85em;
   height: 1em;
 }
 .vowel {
@@ -79,13 +79,15 @@
   height: 1em;
 }
 .syllable {
-  width: 1em;
+  width: 0.85em;
 }
 
 /* kerning happens here*/
 .syllable + .syllable, .punct + .syllable {
   /* The wug images have some spacing, remove that for better æsthetics */
-  margin-left: -0.15em;
+/*  margin-left: -0.15em;*/
+/* This is no longer necessary, the wug images have been resized to be 1080x1200.
+   Further kerning is still possible if really desired. */
 }
 
 /* Position the consonant and vowel within their boxes */
@@ -96,7 +98,7 @@
 }
 .syllable .vowel {
   position: absolute;
-  left: 0.7em;
+  left: 0.6em;
   z-index: 1;
 }
 
