@@ -224,6 +224,10 @@ class Parser {
                    this.vowel = "fat_ha";
                    break;
                case "o":
+                   // /oʊ/ is really just perceived as /o:/ by most. Including by Alice.
+                   if (next == "ʊ") {
+                       this.index++;
+                   }
                case "ɔ":
                case "ʊ":
                case "u":
