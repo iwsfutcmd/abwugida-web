@@ -6,6 +6,7 @@
     <title></title>
     <script src="./cmu.json.js"></script>
     <script src="./alice_dict.json.js"></script>
+    <script src="./abwugida_map.json.js"></script>
     <script src="./main.js"></script>
     <script type="text/javascript">
         function update() {
@@ -21,6 +22,7 @@
                 }
                 document.getElementById('ipa-output').innerHTML = details.ipa;
                 document.getElementById('string-output').innerHTML = details.string;   
+                document.getElementById('abwugida').innerHTML = details.cps
             } catch (e) {
                 output.innerHTML = `<span class=unknown>Got error: ${e}</span>`
             }
@@ -33,6 +35,17 @@
     </script>
 
     <style type="text/css">
+
+@font-face {
+  font-family: "Abwugida";
+  src: url("font/Abwugida.ttf");
+}
+
+#abwugida {
+  font-family: "Abwugida";
+  font-size: 56pt;
+}
+
 /* Spaces */
 .space {
     width: 0.4em;
@@ -152,8 +165,16 @@ as <a href="https://manishearth.github.io/ipadle/">IPAdle</a>), and then maps th
 <span id=output>
 
 </span>
+<br/>
+<!-- <span id="abwugida"></span> -->
 </div>
 
+<svg viewBox="0 0 480 480" width="400" height="400">
+  <path id="circle" d="M 240,140 A 100,100 0 1,1 239.99,140" fill="none" stroke="none"/>
+  <text>
+    <textPath id="abwugida" href="#circle">hello</textPath>
+  </text>
+</svg>
 <script type="text/javascript">update();setFontSize()</script>
 </body>
 </html>

@@ -19,7 +19,7 @@ const CONSONANTS = [
     "t",
     "v",
     "w",
-    "y",
+    "j",
     "z",
     "ʒ",
     "θ",
@@ -135,6 +135,20 @@ class Consonant {
     static isVowel(vowel) {
         return VOWELS.indexOf(vowel) != -1;
     }
+
+    toCPs() {
+        let consonant = this.consonant;
+
+        if (consonant == "blank") {
+            consonant = "blank_forward";
+        }
+        let cps = String.fromCharCode(parseInt(ABWUGIDA_MAP[consonant], 16));
+        if (this.vowel) {
+            return cps + String.fromCharCode(parseInt(ABWUGIDA_MAP[this.vowel], 16));
+        } else {
+            return cps;
+        }
+    }
 }
 
 
@@ -181,8 +195,6 @@ class Parser {
         // Fixups to go from IPA to AlicePA
         if (current == "ɹ") {
             current = "r";
-        } else if (current == "j") {
-            current = "y";
         }
 
 
@@ -259,17 +271,18 @@ class Parser {
 
 
 class TripleOutput {
-    constructor(html, string, ipa) {
+    constructor(html, string, ipa, cps) {
         this.html = html;
         this.ipa = ipa;
         this.string = string;
-
+        this.cps = cps;
     }
 
     push(otherTriple) {
         this.html += otherTriple.html;
         this.ipa += otherTriple.ipa;
         this.string += otherTriple.string;
+        this.cps += otherTriple.cps;
     }
 
     static forSpecialChar(ch) {
@@ -278,13 +291,13 @@ class TripleOutput {
         }
         let punct_file;
         if (ch == "\n") {
-            return new TripleOutput("<br>", "⏎", "⏎");
+            return new TripleOutput("<br>", "⏎", "⏎", "");
         } else if (ch == " ") {
-            return new TripleOutput("<div class=space>&nbsp;</div>", " ", " ")
+            return new TripleOutput("<div class=space>&nbsp;</div>", " ", " ", " ")
         } else if (punct_file = TripleOutput.punctuationFileName(ch)) {
-            return new TripleOutput(`<div class=punct><img class=punctimg src="wugz/punct/${punct_file}.png"></div>`, ch, ch);
+            return new TripleOutput(`<div class=punct><img class=punctimg src="wugz/punct/${punct_file}.png"></div>`, ch, ch, ch);
         } else {
-            return new TripleOutput(`<div class=char><div class=charbox>${ch}</div></div>`, ch, ch);
+            return new TripleOutput(`<div class=char><div class=charbox>${ch}</div></div>`, ch, ch, ch);
         }
     }
 
@@ -394,7 +407,7 @@ function getDetailsForWord(word) {
     if (word.search(/[a-zA-Z]/) == -1) {
         // This code handles non-word content like newlines and spaces and such
 
-        let output = new TripleOutput("", "", "");
+        let output = new TripleOutput("", "", "", "");
 
 
         for (ch of word) {
@@ -432,14 +445,15 @@ function getDetailsForWord(word) {
     }
     if (!ipa) {
 
-        return new TripleOutput(`<div class=unknown><div class=charbox>${word}</div></div>`, `<span class=unknown>${word}</span>`, `<span class=unknown>${word}</span>`)
+        return new TripleOutput(`<div class=unknown><div class=charbox>${word}</div></div>`, `<span class=unknown>${word}</span>`, `<span class=unknown>${word}</span>`, "")
 
     }
 
     let consonants = parseConsonants(ipa);
     let html = consonants.map((c) => c.toHtml());
     let string = consonants.map((c) => c.toString());
-    return new TripleOutput(html.join(""), string.join("-"), ipa)
+    let cps = consonants.map((c) => c.toCPs()).join('');
+    return new TripleOutput(html.join(""), string.join("-"), ipa, cps)
 }
 
 
@@ -455,5 +469,6 @@ function getDetails(words) {
          arr.map((word) => word.html).join(""),
          arr.map((word) => word.string).join(""),
          arr.map((word) => word.ipa).join(""),
+         arr.map((word) => word.cps).join(""),
        );
 }
