@@ -53,7 +53,14 @@
         src: url("font/Abwugida-Bold.ttf");
         font-weight: 700;
       }
-
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      .download-button {
+        position: absolute;
+        align-self: end;
+      }
       .abwugida {
         font-family: "Abwugida";
         font-size: 56pt;
@@ -71,17 +78,8 @@
         font-weight: 700;
       }
 
-      /* Spaces */
-      .space {
-        width: 0.4em;
-        display: inline-block;
-      }
-
       /* Most content boxes have something inside them that needs to be positioned */
-      .syllable,
-      .char,
-      .unknown,
-      .punct {
+      .unknown {
         height: 1em;
         display: inline-block;
         position: relative;
@@ -90,66 +88,6 @@
         margin-bottom: 0.2em;
         vertical-align: middle;
       }
-      .char,
-      .punct {
-        width: fit-content;
-        z-index: 1;
-      }
-
-      /* Sizes for content boxes */
-      .charbox {
-        width: fit-content;
-        font-size: 0.8em;
-        height: 1em;
-        position: relative;
-        display: inline-block;
-        top: -0.2em;
-        left: 0;
-      }
-      .consonant {
-        width: 0.85em;
-        height: 1em;
-      }
-      .vowel {
-        width: 0.3em;
-        height: 0.3em;
-      }
-      /* width is variable */
-      .punctimg {
-        height: 1em;
-      }
-      .syllable {
-        width: 0.85em;
-      }
-
-      /* Position the consonant and vowel within their boxes */
-      .syllable .consonant {
-        position: relative;
-        top: 0;
-        left: 0;
-      }
-      .syllable .vowel {
-        position: absolute;
-        left: 0.6em;
-        z-index: 2;
-      }
-
-      /* If vowels are on voiceless bases, they can be made to live on the wugbeak.
-   Currently not making this design choice. */
-      /*.syllable .vowel.voiceless-base {
-  left: 0px;
-}*/
-
-      /* Correctly position the vowels */
-      .syllable .vowel-fat_ha,
-      .syllable .vowel-dommah,
-      .syllable .vowel-schwa {
-        top: -0.07em;
-      }
-      .syllable .vowel-kas_rah {
-        top: 0.75em;
-      }
-
       .unknown {
         color: red;
         width: fit-content;
@@ -168,6 +106,7 @@
     </style>
   </head>
   <body>
+    <a class="download-button" href="font/Abwugida-Regular.ttf" download><button>Download Font</button></a>
     <div id="form">
       <label for="text">Text: </label><br /><textarea
         id="text"
