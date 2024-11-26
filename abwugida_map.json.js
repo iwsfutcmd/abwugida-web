@@ -36,10 +36,13 @@ const ABWUGIDA_MAP = {
     "zˤ": "E01E",
     "lˤ": "E01F",
     "ðˤ": "E020",
+    "ɥ": "E021",
     "blank_backward": "E100",
     "blank_forward": "E101",
-    "fat_ha": "E102",
-    "kas_rah": "E103",
-    "dommah": "E104",
-    "schwa": "E105"
+    "aː": "E102",
+    "iː": "E103",
+    "uː": "E104",
+    "a": "E105",
+    "i": "E106",
+    "u": "E107"
 }

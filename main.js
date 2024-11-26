@@ -39,10 +39,10 @@ const VOICELESS_CONSONANTS = [
 ];
 
 const VOWELS = [
-    "fat_ha",
-    "dommah",
-    "kas_rah",
-    "schwa",
+    "aː",
+    "uː",
+    "iː",
+    "a",
 ];
 
 const IPA_VOWELS = [
@@ -93,13 +93,13 @@ class Consonant {
 
     vowelToString() {
         switch (this.vowel) {
-            case "fat_ha":
-                return "a";
-            case "dommah":
-                return "o";
-            case "kas_rah":
-                return "e";
-            case "schwa":
+            case "aː":
+                return "aː";
+            case "uː":
+                return "uː";
+            case "iː":
+                return "iː";
+            case "a":
                 return "ə";
             default:
                 return "";
@@ -228,12 +228,12 @@ class Parser {
                case "ɪ":
                case "e":
                case "ɛ":
-                   this.vowel = "kas_rah";
+                   this.vowel = "iː";
                    break;
                case "æ":
                case "a":
                case "ɑ":
-                   this.vowel = "fat_ha";
+                   this.vowel = "aː";
                    break;
                case "o":
                    // /oʊ/ is really just perceived as /o:/ by most. Including by Alice.
@@ -245,14 +245,14 @@ class Parser {
                case "u":
                // This one's controversial
                case "ʌ":
-                   this.vowel = "dommah";
+                   this.vowel = "uː";
                    break;
                case "ə":
-                   this.vowel = "schwa";
+                   this.vowel = "a";
                    break;
                case "ɚ":
                case "ɝ":
-                   this.vowel = "schwa";
+                   this.vowel = "a";
                    this.finishConsonant();
                    this.consonant = "r";
                    // Alice prefers to have coda r form a new syllable onset

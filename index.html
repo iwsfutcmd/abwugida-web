@@ -12,7 +12,6 @@
       function update() {
         try {
           let details = getDetails(document.getElementById("text").value);
-          // document.getElementById('output').innerHTML = details.html;
           if (details.ipa.length > 1000) {
             details.ipa = `<details><summary>Show IPA</summary>${details.ipa}</details>`;
           }
@@ -30,8 +29,10 @@
       }
 
       function setFontSize() {
-        document.getElementById("outputbox").style.fontSize =
-          document.getElementById("fontsize").value + "px";
+        const fontSize = document.getElementById("fontsize").value + "px";
+        [...document.getElementsByClassName("abwugida")].forEach(
+          (e) => (e.style.fontSize = fontSize)
+        );
       }
     </script>
 
@@ -57,13 +58,22 @@
         display: flex;
         flex-direction: column;
       }
-      .download-button {
+      header {
+        display: flex;
+        justify-content: space-between;
+      }
+      .help {
         position: absolute;
-        align-self: end;
+        background-color: white;
+        border: 1px black solid;
+        inset-inline-start: 0px;
+      }
+      #text {
+        inline-size: 100%;
+        box-sizing: border-box;
       }
       .abwugida {
         font-family: "Abwugida";
-        font-size: 56pt;
       }
 
       .regular {
@@ -92,9 +102,6 @@
         color: red;
         width: fit-content;
       }
-      #outputbox {
-        font-size: 80px;
-      }
       #outputbox summary {
         font-size: 12pt;
       }
@@ -106,7 +113,28 @@
     </style>
   </head>
   <body>
-    <a class="download-button" href="font/Abwugida-Regular.ttf" download><button>Download Font</button></a>
+    <header>
+      <details>
+        <summary>How this works</summary>
+        <div class="help">
+          <p>
+            This uses the
+            <a href="http://www.speech.cs.cmu.edu/cgi-bin/cmudict"
+              >CMU pronouncing dictionary</a
+            >
+            to convert text into IPA (with the same CMU-to-IPA mapping as
+            <a href="https://manishearth.github.io/ipadle/">IPAdle</a>), and
+            then maps that to the Wug writing system. Currently leaving out
+            details on how Wug works, figure it out!
+          </p>
+
+          <p>Writing system (design and art) by Alice Fares. Code by Manish.</p>
+        </div>
+      </details>
+      <a class="download-button" href="font/Abwugida-Regular.ttf" download>
+        <button>Download Font</button>
+      </a>
+    </header>
     <div id="form">
       <label for="text">Text: </label><br /><textarea
         id="text"
@@ -127,22 +155,6 @@
 
       IPA: <span id="ipa-output"></span><br />
       Parsed: <span id="string-output"></span><br />
-      <details>
-        <summary>How this works</summary>
-        <p>
-          This uses the
-          <a href="http://www.speech.cs.cmu.edu/cgi-bin/cmudict"
-            >CMU pronouncing dictionary</a
-          >
-          to convert text into IPA (with the same CMU-to-IPA mapping as
-          <a href="https://manishearth.github.io/ipadle/">IPAdle</a>), and then
-          maps that to the Wug writing system. Currently leaving out details on
-          how Wug works, figure it out!
-        </p>
-
-        <p>Writing system (design and art) by Alice Fares. Code by Manish.</p>
-      </details>
-
       <button onclick="document.getElementById('form').style.display = 'none'">
         Hide controls (for printing)
       </button>
@@ -157,6 +169,7 @@
         height="400"
         viewBox="0 0 800 200"
         xmlns="http://www.w3.org/2000/svg"
+        style="inline-size: 100%"
       >
         <!-- Define the sine wave path -->
         <path
@@ -169,7 +182,8 @@
         <!-- Create the text element and place it on the path -->
         <text font-size="16">
           <textPath href="#sineWave" id="textPath">
-            <tspan class="abwugida regular" />&nbsp;
+            <tspan class="abwugida regular" />
+            &nbsp;
           </textPath>
           <animate
             xlink:href="#textPath"
@@ -182,14 +196,14 @@
         </text>
       </svg>
     </details>
-    <div id="outputbox">
-      <details><summary>thin</summary>
-        <div class="abwugida thin"></div>
-      </details>
-      <details><summary>bold</summary>
-        <div class="abwugida thin"></div>
-      </details>
-    </div>
+    <details>
+      <summary>thin</summary>
+      <div class="abwugida thin"></div>
+    </details>
+    <details>
+      <summary>bold</summary>
+      <div class="abwugida bold"></div>
+    </details>
 
     <script type="text/javascript">
       update();
