@@ -11,7 +11,9 @@
     <script type="text/javascript">
       function update() {
         try {
-          let details = getDetails(document.getElementById("text").value);
+          const mode = document.querySelector('input[name="mode"]:checked')?.value || 'english';
+          const text = document.getElementById("text").value;
+          let details = mode === 'arabizi' ? arabiziToDetails(text) : getDetails(text);
           if (details.ipa.length > 1000) {
             details.ipa = `<details><summary>Show IPA</summary>${details.ipa}</details>`;
           }
@@ -23,6 +25,9 @@
           [...document.getElementsByClassName("abwugida")].forEach(
             (e) => (e.innerHTML = details.cps)
           );
+          const ct = document.getElementById("circle-text");
+          if (ct) ct.innerHTML = details.cps + " ";
+          fitCircleText();
         } catch (e) {
           output.innerHTML = `<span class=unknown>Got error: ${e}</span>`;
         }
@@ -33,6 +38,61 @@
         [...document.getElementsByClassName("abwugida")].forEach(
           (e) => (e.style.fontSize = fontSize)
         );
+        fitCircleText();
+      }
+
+      async function downloadCircleSVG() {
+        const svg = document.getElementById("circle-svg");
+
+        // Fetch font and encode as base64
+        const fontResp = await fetch("font/Abwugida-Regular.ttf");
+        const fontBuf = await fontResp.arrayBuffer();
+        const bytes = new Uint8Array(fontBuf);
+        let binary = "";
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        const fontB64 = btoa(binary);
+
+        // Compute viewBox from circle geometry + font size.
+        // Baseline sits on the circle (r=340, center 400,400); glyphs extend
+        // up to ~1 font-size outward from the baseline in any direction.
+        const tspan = document.getElementById("circle-text");
+        const fsPx = parseFloat(window.getComputedStyle(tspan).fontSize) || 80;
+        const svgDisplayWidth = svg.getBoundingClientRect().width || 600;
+        const fsSVG = fsPx * 800 / svgDisplayWidth;
+        const pad = Math.ceil(fsSVG * 2) + 10;
+        const cx = 400, cy = 400, r = 340;
+        const vx = cx - r - pad, vy = cy - r - pad, vsize = (r + pad) * 2;
+
+        const clone = svg.cloneNode(true);
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        clone.setAttribute("viewBox", `${vx} ${vy} ${vsize} ${vsize}`);
+        clone.setAttribute("width", vsize);
+        clone.setAttribute("height", vsize);
+        clone.setAttribute("overflow", "visible");
+        clone.removeAttribute("style");
+
+        // Embed font + class styles so the SVG is self-contained
+        const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+        style.textContent = `
+          @font-face { font-family: "Abwugida"; src: url("data:font/truetype;base64,${fontB64}"); font-weight: 400; }
+          .abwugida { font-family: "Abwugida"; }
+          .regular { font-weight: 400; }
+        `;
+        clone.insertBefore(style, clone.firstChild);
+
+        const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" });
+        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "abwugida-circle.svg" });
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function fitCircleText() {
+        const tspan = document.getElementById("circle-text");
+        if (!tspan || !tspan.textContent) return;
+        const len = tspan.getComputedTextLength();
+        if (!len) return;
+        const currentSize = parseFloat(window.getComputedStyle(tspan).fontSize);
+        tspan.style.fontSize = (currentSize * 2 * Math.PI * 340 / len) + "px";
       }
     </script>
 
@@ -136,6 +196,10 @@
       </a>
     </header>
     <div id="form">
+      <label>Mode: </label>
+      <label><input type="radio" name="mode" value="english" checked onchange="update()"> English</label>
+      <label><input type="radio" name="mode" value="arabizi" onchange="update()"> Arabizi (Lebanese)</label>
+      <br /><br />
       <label for="text">Text: </label><br /><textarea
         id="text"
         name="text"
@@ -193,6 +257,28 @@
             dur="10s"
             repeatCount="indefinite"
           />
+        </text>
+      </svg>
+    </details>
+    <details ontoggle="fitCircleText()">
+      <summary>○</summary>
+      <button onclick="downloadCircleSVG()">Download SVG</button>
+      <svg
+        id="circle-svg"
+        viewBox="0 0 800 800"
+        xmlns="http://www.w3.org/2000/svg"
+        style="max-width: 600px; width: 100%; display: block; margin: auto"
+        overflow="visible"
+      >
+        <defs>
+          <!-- Circle path starting at 12 o'clock, going clockwise in four quarter-arcs -->
+          <path id="circlePath" d="M 400,60 a 340,340 0 0,1 340,340 a 340,340 0 0,1 -340,340 a 340,340 0 0,1 -340,-340 a 340,340 0 0,1 340,-340" />
+        </defs>
+        <circle cx="400" cy="400" r="340" fill="none" stroke="#ccc" stroke-width="2" />
+        <text>
+          <textPath href="#circlePath">
+            <tspan class="abwugida regular" id="circle-text" />
+          </textPath>
         </text>
       </svg>
     </details>

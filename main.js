@@ -23,6 +23,8 @@ const CONSONANTS = [
     "z",
     "ʒ",
     "θ",
+    // Arabic consonants (for Arabizi mode)
+    "ʔ", "q", "ħ", "ʕ", "x", "ɣ", "tˤ", "dˤ", "sˤ", "zˤ", "ðˤ", "ɫ",
 ];
 
 const VOICELESS_CONSONANTS = [
@@ -43,6 +45,8 @@ const VOWELS = [
     "uː",
     "iː",
     "a",
+    "i",
+    "u",
 ];
 
 const IPA_VOWELS = [
@@ -101,6 +105,10 @@ class Consonant {
                 return "iː";
             case "a":
                 return "ə";
+            case "i":
+                return "i";
+            case "u":
+                return "u";
             default:
                 return "";
         }
@@ -471,4 +479,147 @@ function getDetails(words) {
          arr.map((word) => word.ipa).join(""),
          arr.map((word) => word.cps).join(""),
        );
+}
+
+
+// === ARABIZI (Lebanese Arabic) MODE ===
+// Maps Arabizi chat alphabet to Abwugida phonemes.
+// Numbers used: 2=ʔ, 3=ʕ, 3'=ɣ, 5=x, 6=tˤ, 6'=ðˤ, 7=ħ, 8=ɣ, 9=sˤ, 9'=zˤ
+
+function tokenizeArabizi(text) {
+    const tokens = [];
+    let i = 0;
+
+    while (i < text.length) {
+        const ch = text[i];
+        const next = i + 1 < text.length ? text[i + 1] : '';
+        const chL = ch.toLowerCase();
+        const nextL = next.toLowerCase();
+
+        // Apostrophe digraphs: 3'=ɣ, 6'=ðˤ, 9'=zˤ
+        if ((ch === '3' || ch === '6' || ch === '9') && next === "'") {
+            const map = { '3': 'ɣ', '6': 'ðˤ', '9': 'zˤ' };
+            tokens.push({ type: 'consonant', phoneme: map[ch] }); i += 2;
+
+        // Uppercase emphatics and S=ʃ (checked before lowercase digraphs)
+        } else if (ch === 'S') {
+            tokens.push({ type: 'consonant', phoneme: 'ʃ' }); i++;
+        } else if (ch === 'T') {
+            tokens.push({ type: 'consonant', phoneme: 'tˤ' }); i++;
+        } else if (ch === 'D') {
+            tokens.push({ type: 'consonant', phoneme: 'dˤ' }); i++;
+
+        // Lowercase letter digraphs
+        } else if (chL === 's' && nextL === 'h') {
+            tokens.push({ type: 'consonant', phoneme: 'ʃ' }); i += 2;
+        } else if (chL === 't' && nextL === 'h') {
+            tokens.push({ type: 'consonant', phoneme: 'θ' }); i += 2;
+        } else if (chL === 'd' && nextL === 'h') {
+            tokens.push({ type: 'consonant', phoneme: 'ð' }); i += 2;
+        } else if (chL === 'g' && nextL === 'h') {
+            tokens.push({ type: 'consonant', phoneme: 'ɣ' }); i += 2;
+        } else if (chL === 'k' && nextL === 'h') {
+            tokens.push({ type: 'consonant', phoneme: 'x' }); i += 2;
+
+        // Long vowel digraphs
+        } else if (chL === 'a' && nextL === 'a') {
+            tokens.push({ type: 'vowel', phoneme: 'aː' }); i += 2;
+        } else if (chL === 'i' && (nextL === 'i' || nextL === 'y')) {
+            tokens.push({ type: 'vowel', phoneme: 'iː' }); i += 2;
+        } else if (chL === 'e' && nextL === 'e') {
+            tokens.push({ type: 'vowel', phoneme: 'iː' }); i += 2;
+        } else if (chL === 'u' && (nextL === 'u' || nextL === 'w')) {
+            tokens.push({ type: 'vowel', phoneme: 'uː' }); i += 2;
+        } else if (chL === 'o' && nextL === 'o') {
+            tokens.push({ type: 'vowel', phoneme: 'uː' }); i += 2;
+
+        // Number consonants
+        } else if (ch === '2') { tokens.push({ type: 'consonant', phoneme: 'ʔ' }); i++;
+        } else if (ch === '3') { tokens.push({ type: 'consonant', phoneme: 'ʕ' }); i++;
+        } else if (ch === '5') { tokens.push({ type: 'consonant', phoneme: 'x' }); i++;
+        } else if (ch === '6') { tokens.push({ type: 'consonant', phoneme: 'tˤ' }); i++;
+        } else if (ch === '7') { tokens.push({ type: 'consonant', phoneme: 'ħ' }); i++;
+        } else if (ch === '8') { tokens.push({ type: 'consonant', phoneme: 'ɣ' }); i++;
+        } else if (ch === '9') { tokens.push({ type: 'consonant', phoneme: 'sˤ' }); i++;
+
+        // Regular consonants (case-insensitive via chL, after uppercase specials above)
+        } else if (chL === 'b') { tokens.push({ type: 'consonant', phoneme: 'b' }); i++;
+        } else if (chL === 'd') { tokens.push({ type: 'consonant', phoneme: 'd' }); i++;
+        } else if (chL === 'f') { tokens.push({ type: 'consonant', phoneme: 'f' }); i++;
+        } else if (chL === 'g') { tokens.push({ type: 'consonant', phoneme: 'g' }); i++;
+        } else if (chL === 'h') { tokens.push({ type: 'consonant', phoneme: 'h' }); i++;
+        } else if (chL === 'j') { tokens.push({ type: 'consonant', phoneme: 'ʒ' }); i++;
+        } else if (chL === 'k') { tokens.push({ type: 'consonant', phoneme: 'k' }); i++;
+        } else if (chL === 'l') { tokens.push({ type: 'consonant', phoneme: 'l' }); i++;
+        } else if (chL === 'm') { tokens.push({ type: 'consonant', phoneme: 'm' }); i++;
+        } else if (chL === 'n') { tokens.push({ type: 'consonant', phoneme: 'n' }); i++;
+        } else if (chL === 'p') { tokens.push({ type: 'consonant', phoneme: 'p' }); i++;
+        } else if (chL === 'q') { tokens.push({ type: 'consonant', phoneme: 'q' }); i++;
+        } else if (chL === 'r') { tokens.push({ type: 'consonant', phoneme: 'r' }); i++;
+        } else if (chL === 's') { tokens.push({ type: 'consonant', phoneme: 's' }); i++;
+        } else if (chL === 't') { tokens.push({ type: 'consonant', phoneme: 't' }); i++;
+        } else if (chL === 'v') { tokens.push({ type: 'consonant', phoneme: 'v' }); i++;
+        } else if (chL === 'w') { tokens.push({ type: 'consonant', phoneme: 'w' }); i++;
+        } else if (chL === 'x') { tokens.push({ type: 'consonant', phoneme: 'x' }); i++;
+        } else if (chL === 'y') { tokens.push({ type: 'consonant', phoneme: 'j' }); i++;
+        } else if (chL === 'z') { tokens.push({ type: 'consonant', phoneme: 'z' }); i++;
+
+        // Short vowels
+        } else if (chL === 'a') { tokens.push({ type: 'vowel', phoneme: 'a' }); i++;
+        } else if (chL === 'e' || chL === 'i') { tokens.push({ type: 'vowel', phoneme: 'i' }); i++;
+        } else if (chL === 'o' || chL === 'u') { tokens.push({ type: 'vowel', phoneme: 'u' }); i++;
+
+        } else {
+            tokens.push({ type: 'special', char: ch }); i++;
+        }
+    }
+    return tokens;
+}
+
+function arabiziTokensToConsonants(phonemeTokens) {
+    const consonants = [];
+    let i = 0;
+    while (i < phonemeTokens.length) {
+        const tok = phonemeTokens[i];
+        if (tok.type === 'consonant') {
+            let vowel = null;
+            if (i + 1 < phonemeTokens.length && phonemeTokens[i + 1].type === 'vowel') {
+                vowel = phonemeTokens[i + 1].phoneme;
+                i++;
+            }
+            consonants.push(new Consonant(tok.phoneme, vowel));
+        } else {
+            // Vowel-initial syllable: use blank consonant carrier
+            consonants.push(new Consonant('blank', tok.phoneme));
+        }
+        i++;
+    }
+    return consonants;
+}
+
+function arabiziToDetails(text) {
+    TripleOutput.AFTER_WHITESPACE = true;
+    const allTokens = tokenizeArabizi(text);
+    const output = new TripleOutput("", "", "", "");
+    let buffer = [];
+
+    function flushBuffer() {
+        if (!buffer.length) return;
+        const consonants = arabiziTokensToConsonants(buffer);
+        output.string += consonants.map(c => c.toString()).join("-");
+        output.ipa += buffer.map(t => t.phoneme).join("");
+        output.cps += consonants.map(c => c.toCPs()).join("");
+        buffer = [];
+    }
+
+    for (const tok of allTokens) {
+        if (tok.type === 'special') {
+            flushBuffer();
+            output.push(TripleOutput.forSpecialChar(tok.char));
+        } else {
+            buffer.push(tok);
+        }
+    }
+    flushBuffer();
+    return output;
 }
