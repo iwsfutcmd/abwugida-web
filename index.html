@@ -13,7 +13,18 @@
         try {
           const mode = document.querySelector('input[name="mode"]:checked')?.value || 'english';
           const text = document.getElementById("text").value;
-          let details = mode === 'arabizi' ? arabiziToDetails(text) : getDetails(text);
+          let details;
+          if (mode === 'arabizi') {
+            details = arabiziToDetails(text);
+          } else if (mode === 'glyphs') {
+            details = { ipa: '', string: '', cps: text };
+          } else {
+            details = getDetails(text);
+          }
+          const clickerSection = document.getElementById("clicker-section");
+          if (clickerSection) clickerSection.style.display = mode === 'glyphs' ? '' : 'none';
+          const phoneticOutput = document.getElementById("phonetic-output");
+          if (phoneticOutput) phoneticOutput.style.display = mode === 'glyphs' ? 'none' : '';
           if (details.ipa.length > 1000) {
             details.ipa = `<details><summary>Show IPA</summary>${details.ipa}</details>`;
           }
@@ -94,6 +105,150 @@
         const currentSize = parseFloat(window.getComputedStyle(tspan).fontSize);
         tspan.style.fontSize = (currentSize * 2 * Math.PI * 340 / len) + "px";
       }
+
+      let CHARMAP = {};
+      fetch("./charmap.json")
+        .then((r) => r.text())
+        .then((t) => {
+          // Tolerate trailing commas in the source JSON.
+          CHARMAP = JSON.parse(t.replace(/,(\s*[}\]])/g, "$1"));
+        })
+        .catch((e) => console.warn("Could not load charmap.json:", e));
+
+      function glyphsKeydown(e) {
+        if (e.metaKey) return;
+        const mode = document.querySelector('input[name="mode"]:checked')?.value;
+        if (mode !== "glyphs") return;
+
+        // AltGr + Digit1..8 → tones E120..E127
+        // (AltGraph on Linux/Win, Option on Mac, ctrl+alt on Win all set altKey)
+        const altGr = e.getModifierState("AltGraph") || e.altKey;
+        if (altGr) {
+          const m = /^Digit([1-8])$/.exec(e.code);
+          if (m) {
+            const n = parseInt(m[1], 10) - 1;
+            const cp = (0xe120 + n).toString(16).toUpperCase();
+            e.preventDefault();
+            insertGlyph(cp);
+          }
+          return;
+        }
+
+        if (e.ctrlKey) return;
+
+        // Digit1..9 (± shift) → carriers E200..E211
+        const m = /^Digit([1-9])$/.exec(e.code);
+        if (m) {
+          const n = parseInt(m[1], 10) - 1;
+          const cp = (0xe200 + n * 2 + (e.shiftKey ? 1 : 0))
+            .toString(16)
+            .toUpperCase();
+          e.preventDefault();
+          insertGlyph(cp);
+          return;
+        }
+
+        // Character-based charmap (consonants, vowels, special chars)
+        const ch = CHARMAP[e.key];
+        if (ch) {
+          e.preventDefault();
+          insertAtCursor(ch);
+        }
+      }
+
+      function insertAtCursor(ch) {
+        const textarea = document.getElementById("text");
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value =
+          textarea.value.slice(0, start) + ch + textarea.value.slice(end);
+        const pos = start + ch.length;
+        textarea.focus();
+        textarea.setSelectionRange(pos, pos);
+        update();
+      }
+
+      function insertGlyph(cp) {
+        insertAtCursor(String.fromCharCode(parseInt(cp, 16)));
+      }
+
+      function buildClicker() {
+        const carrierCh = String.fromCharCode(
+          parseInt(ABWUGIDA_MAP["blank_forward"], 16)
+        );
+        const namedEntries = (keys) =>
+          keys.map((key) => ({ label: key, cp: ABWUGIDA_MAP[key] }));
+        const hexRange = (start, end) => {
+          const out = [];
+          for (let c = start; c <= end; c++) {
+            const cp = c.toString(16).toUpperCase();
+            out.push({ label: `U+${cp}`, cp });
+          }
+          return out;
+        };
+        const groups = [
+          {
+            name: "Consonants",
+            entries: namedEntries([
+              "p", "b", "t", "d", "k", "g", "q", "ʔ",
+              "tʃ", "dʒ", "s", "z", "ʃ", "ʒ", "f", "v",
+              "θ", "ð", "x", "ɣ", "ħ", "ʕ", "h",
+              "m", "n", "ɲ", "ŋ", "r", "l", "w", "j",
+              "tˤ", "dˤ", "sˤ", "zˤ", "ɫ", "ðˤ", "ɥ",
+            ]),
+          },
+          {
+            name: "Vowels",
+            isCombining: true,
+            entries: namedEntries(["aː", "iː", "uː", "a", "i", "u"]),
+          },
+          {
+            name: "Tones",
+            isCombining: true,
+            entries: hexRange(0xe120, 0xe127),
+          },
+          { name: "Carriers", entries: hexRange(0xe200, 0xe211) },
+          { name: "Accessories (E3xx)", entries: hexRange(0xe300, 0xe316) },
+        ];
+
+        const container = document.getElementById("clicker");
+        groups.forEach((group) => {
+          const heading = document.createElement("div");
+          heading.className = "clicker-heading";
+          heading.textContent = group.name;
+          container.appendChild(heading);
+          const grid = document.createElement("div");
+          grid.className = "clicker-grid";
+          group.entries.forEach(({ label, cp }) => {
+            if (!cp) return;
+            const ch = String.fromCharCode(parseInt(cp, 16));
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "clicker-btn";
+            btn.title = `${label} (U+${cp})`;
+            btn.onclick = () => insertGlyph(cp);
+            const glyph = document.createElement("span");
+            glyph.className = "clicker-glyph";
+            if (group.isCombining) {
+              // Combining marks need a (greyed) carrier so the glyph renders.
+              const carrier = document.createElement("span");
+              carrier.className = "clicker-carrier";
+              carrier.textContent = carrierCh;
+              glyph.appendChild(carrier);
+              glyph.appendChild(document.createTextNode(ch));
+            } else {
+              glyph.textContent = ch;
+            }
+            btn.appendChild(glyph);
+            const lab = document.createElement("span");
+            lab.className = "clicker-label";
+            lab.textContent = label;
+            btn.appendChild(lab);
+            grid.appendChild(btn);
+          });
+          container.appendChild(grid);
+        });
+      }
     </script>
 
     <style type="text/css">
@@ -170,35 +325,72 @@
         margin-bottom: 0.05em; /* bare minimum from kasrah positioning = 0.75 + 0.3 - 1 */
         box-decoration-break: slice;
       }
+      #display {
+        padding: 0.4em 0.3em;
+      }
+      #clicker {
+        margin: 0.5em 0;
+      }
+      .clicker-heading {
+        font-weight: bold;
+        margin-top: 0.5em;
+        font-size: 11pt;
+      }
+      .clicker-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 4px 0;
+      }
+      .clicker-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 6px;
+        min-width: 44px;
+        cursor: pointer;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+      }
+      .clicker-btn:hover {
+        background: #eef;
+        border-color: #88a;
+      }
+      .clicker-btn:active {
+        background: #dde;
+      }
+      .clicker-glyph {
+        font-family: "Abwugida";
+        font-weight: 400;
+        font-size: 28px;
+        line-height: 1;
+      }
+      .clicker-carrier {
+        opacity: 0.2;
+      }
+      .clicker-label {
+        font-size: 10px;
+        color: #555;
+        margin-top: 3px;
+        font-family: sans-serif;
+      }
     </style>
   </head>
   <body>
     <header>
-      <details>
-        <summary>How this works</summary>
-        <div class="help">
-          <p>
-            This uses the
-            <a href="http://www.speech.cs.cmu.edu/cgi-bin/cmudict"
-              >CMU pronouncing dictionary</a
-            >
-            to convert text into IPA (with the same CMU-to-IPA mapping as
-            <a href="https://manishearth.github.io/ipadle/">IPAdle</a>), and
-            then maps that to the Wug writing system. Currently leaving out
-            details on how Wug works, figure it out!
-          </p>
-
-          <p>Writing system (design and art) by Alice Fares. Code by Manish.</p>
-        </div>
-      </details>
       <a class="download-button" href="font/Abwugida-Regular.ttf" download>
         <button>Download Font</button>
       </a>
+      <a href="grid.html"><button>Carrier × Accessory grid</button></a>
     </header>
+    <div id="display" class="abwugida"></div>
     <div id="form">
       <label>Mode: </label>
       <label><input type="radio" name="mode" value="english" checked onchange="update()"> English</label>
       <label><input type="radio" name="mode" value="arabizi" onchange="update()"> Arabizi (Lebanese)</label>
+      <label><input type="radio" name="mode" value="glyphs" onchange="update()"> Glyphs</label>
       <br /><br />
       <label for="text">Text: </label><br /><textarea
         id="text"
@@ -208,6 +400,9 @@
         onkeyup="update()"
       ></textarea
       ><br />
+      <div id="clicker-section" style="display: none">
+        <div id="clicker"></div>
+      </div>
       <label for="fontsize">Set font size (px): </label>
       <input
         type="number"
@@ -217,15 +412,16 @@
         onchange="setFontSize()"
       /><br />
 
-      IPA: <span id="ipa-output"></span><br />
-      Parsed: <span id="string-output"></span><br />
+      <div id="phonetic-output">
+        IPA: <span id="ipa-output"></span><br />
+        Parsed: <span id="string-output"></span><br />
+      </div>
       <button onclick="document.getElementById('form').style.display = 'none'">
         Hide controls (for printing)
       </button>
 
       <br /><br /><br />
     </div>
-    <div class="abwugida"></div>
     <details>
       <summary>~~</summary>
       <svg
@@ -292,6 +488,8 @@
     </details>
 
     <script type="text/javascript">
+      buildClicker();
+      document.getElementById("text").addEventListener("keydown", glyphsKeydown);
       update();
       setFontSize();
     </script>
