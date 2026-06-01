@@ -25,6 +25,8 @@ const CONSONANTS = [
     "θ",
     // Arabic consonants (for Arabizi mode)
     "ʔ", "q", "ħ", "ʕ", "x", "ɣ", "tˤ", "dˤ", "sˤ", "zˤ", "ðˤ", "ɫ",
+    // Other consonants used by additional input modes
+    "ɲ", "ɥ", "kʷ", "gʷ",
 ];
 
 const VOICELESS_CONSONANTS = [
@@ -150,9 +152,9 @@ class Consonant {
         if (consonant == "blank") {
             consonant = "blank_forward";
         }
-        let cps = String.fromCharCode(parseInt(ABWUGIDA_MAP[consonant], 16));
+        let cps = ABWUGIDA_MAP[consonant];
         if (this.vowel) {
-            return cps + String.fromCharCode(parseInt(ABWUGIDA_MAP[this.vowel], 16));
+            return cps + ABWUGIDA_MAP[this.vowel];
         } else {
             return cps;
         }
@@ -595,6 +597,141 @@ function arabiziTokensToConsonants(phonemeTokens) {
         i++;
     }
     return consonants;
+}
+
+// === CANTONESE (Jyutping) MODE ===
+// Parses Jyutping syllables [initial][nucleus][coda]tone and renders each via
+// JYUTPING_MAP → IPA phoneme(s) → Abwugida (Consonant class).
+
+const JYUTPING_INITIALS = [
+    "ng", "gw", "kw",
+    "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "w", "z", "c", "s", "j",
+];
+const JYUTPING_NUCLEI = ["aa", "eo", "oe", "yu", "a", "e", "i", "o", "u"];
+const JYUTPING_CODAS = ["ng", "p", "t", "k", "m", "n", "i", "u"];
+
+// Codas i and u realize as glides (j, w) in Abwugida.
+const JYUTPING_CODA_TO_PHONEME = {
+    "i": "j", "u": "w",
+    "m": "m", "n": "n", "ng": "ŋ",
+    "p": "p", "t": "t", "k": "k",
+};
+
+function tryJyutpingMatch(text, pos, options) {
+    // Greedy longest match.
+    const sorted = [...options].sort((a, b) => b.length - a.length);
+    for (const opt of sorted) {
+        if (text.startsWith(opt, pos)) return opt;
+    }
+    return null;
+}
+
+function tokenizeJyutping(text) {
+    const tokens = [];
+    let i = 0;
+    while (i < text.length) {
+        const initial = tryJyutpingMatch(text, i, JYUTPING_INITIALS);
+        const afterInit = initial ? i + initial.length : i;
+        const nucleus = tryJyutpingMatch(text, afterInit, JYUTPING_NUCLEI);
+        const afterNuc = nucleus ? afterInit + nucleus.length : afterInit;
+        let matched = false;
+        if (initial || nucleus) {
+            const coda = tryJyutpingMatch(text, afterNuc, JYUTPING_CODAS);
+            const afterCoda = coda ? afterNuc + coda.length : afterNuc;
+            const toneCh = text[afterCoda];
+            if (toneCh && toneCh >= "1" && toneCh <= "6") {
+                tokens.push({ type: "syllable", initial, nucleus, coda, tone: toneCh });
+                i = afterCoda + 1;
+                matched = true;
+            }
+        }
+        if (!matched) {
+            tokens.push({ type: "special", char: text[i] });
+            i++;
+        }
+    }
+    return tokens;
+}
+
+// Split an IPA vowel sequence (e.g. "iːuː" or "iu") into individual vowels.
+function splitJyutpingVowels(s) {
+    const out = [];
+    let i = 0;
+    while (i < s.length) {
+        if (s[i + 1] === "ː") { out.push(s[i] + "ː"); i += 2; }
+        else { out.push(s[i]); i++; }
+    }
+    return out;
+}
+
+// Display form of a vowel phoneme for the "Parsed" output (matches
+// Consonant.vowelToString: short a is rendered as schwa).
+function jyutpingVowelDisplay(v) {
+    return v === "a" ? "ə" : v;
+}
+
+function cantoneseToDetails(text) {
+    TripleOutput.AFTER_WHITESPACE = true;
+    const tokens = tokenizeJyutping(text);
+    const output = new TripleOutput("", "", "", "");
+
+    for (const tok of tokens) {
+        if (tok.type === "special") {
+            output.push(TripleOutput.forSpecialChar(tok.char));
+            continue;
+        }
+
+        const initial = tok.initial ? JYUTPING_MAP[tok.initial] : null;
+        const vowels = tok.nucleus
+            ? splitJyutpingVowels(JYUTPING_MAP[tok.nucleus])
+            : [];
+        let codaPhoneme = tok.coda ? JYUTPING_CODA_TO_PHONEME[tok.coda] : null;
+        // After rounded nuclei (o, u, eo), the -i coda glide is the labial
+        // palatal ɥ rather than plain j.
+        if (codaPhoneme === "j" && ["o", "u", "eo"].includes(tok.nucleus)) {
+            codaPhoneme = "ɥ";
+        }
+        const ipaTone = JYUTPING_MAP[tok.tone] || "";
+        const toneCh = ABWUGIDA_MAP[ipaTone] || "";
+
+        // Base: initial (or blank carrier) with ALL vowels attached to the
+        // same base — compound vowels stack on one carrier, not separate ones.
+        let baseCps = "";
+        let baseString = "";
+        if (initial || vowels.length > 0) {
+            const baseConsonant = initial || "blank";
+            const c = new Consonant(baseConsonant, vowels[0] || null);
+            baseCps = c.toCPs();
+            baseString = c.toString();
+            for (let v = 1; v < vowels.length; v++) {
+                baseCps += ABWUGIDA_MAP[vowels[v]] || "";
+                baseString += jyutpingVowelDisplay(vowels[v]);
+            }
+        }
+
+        // Coda — a bare consonant glyph following the tone.
+        let codaCps = "";
+        let codaString = "";
+        if (codaPhoneme) {
+            const c = new Consonant(codaPhoneme, null);
+            codaCps = c.toCPs();
+            codaString = c.toString();
+        }
+
+        // Tone sits between the base and the coda (or at the end if no coda).
+        output.cps += baseCps + toneCh + codaCps;
+        output.ipa +=
+            (tok.initial ? JYUTPING_MAP[tok.initial] : "") +
+            (tok.nucleus ? JYUTPING_MAP[tok.nucleus] : "") +
+            (tok.coda ? JYUTPING_MAP[tok.coda] : "") +
+            ipaTone;
+        const parts = [];
+        if (baseString) parts.push(baseString);
+        parts.push(tok.tone);
+        if (codaString) parts.push(codaString);
+        output.string += parts.join("-");
+    }
+    return output;
 }
 
 function arabiziToDetails(text) {

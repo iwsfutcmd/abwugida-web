@@ -7,6 +7,7 @@
     <script src="./cmu.json.js"></script>
     <script src="./alice_dict.json.js"></script>
     <script src="./abwugida_map.json.js"></script>
+    <script src="./jyutping.json.js"></script>
     <script src="./main.js"></script>
     <script type="text/javascript">
       function update() {
@@ -16,6 +17,8 @@
           let details;
           if (mode === 'arabizi') {
             details = arabiziToDetails(text);
+          } else if (mode === 'cantonese') {
+            details = cantoneseToDetails(text);
           } else if (mode === 'glyphs') {
             details = { ipa: '', string: '', cps: text };
           } else {
@@ -127,24 +130,22 @@
           const m = /^Digit([1-8])$/.exec(e.code);
           if (m) {
             const n = parseInt(m[1], 10) - 1;
-            const cp = (0xe120 + n).toString(16).toUpperCase();
             e.preventDefault();
-            insertGlyph(cp);
+            insertAtCursor(String.fromCharCode(0xe120 + n));
           }
           return;
         }
 
         if (e.ctrlKey) return;
 
-        // Digit1..9 (± shift) → carriers E200..E211
-        const m = /^Digit([1-9])$/.exec(e.code);
-        if (m) {
-          const n = parseInt(m[1], 10) - 1;
-          const cp = (0xe200 + n * 2 + (e.shiftKey ? 1 : 0))
-            .toString(16)
-            .toUpperCase();
+        // o / O → carriers (blank_backward / blank_forward)
+        if (e.key === "o" || e.key === "O") {
           e.preventDefault();
-          insertGlyph(cp);
+          insertAtCursor(
+            e.key === "o"
+              ? ABWUGIDA_MAP["blank_backward"]
+              : ABWUGIDA_MAP["blank_forward"]
+          );
           return;
         }
 
@@ -168,24 +169,25 @@
         update();
       }
 
-      function insertGlyph(cp) {
-        insertAtCursor(String.fromCharCode(parseInt(cp, 16)));
-      }
 
       function buildClicker() {
-        const carrierCh = String.fromCharCode(
-          parseInt(ABWUGIDA_MAP["blank_forward"], 16)
-        );
+        const carrierCh = ABWUGIDA_MAP["blank_forward"];
         const namedEntries = (keys) =>
-          keys.map((key) => ({ label: key, cp: ABWUGIDA_MAP[key] }));
+          keys.map((key) => ({ label: key, ch: ABWUGIDA_MAP[key] }));
         const hexRange = (start, end) => {
           const out = [];
           for (let c = start; c <= end; c++) {
-            const cp = c.toString(16).toUpperCase();
-            out.push({ label: `U+${cp}`, cp });
+            out.push({
+              label: `U+${c.toString(16).toUpperCase()}`,
+              ch: String.fromCharCode(c),
+            });
           }
           return out;
         };
+        const codepointTitle = (ch) =>
+          Array.from(ch)
+            .map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase()}`)
+            .join(" ");
         const groups = [
           {
             name: "Consonants",
@@ -207,7 +209,7 @@
             isCombining: true,
             entries: hexRange(0xe120, 0xe127),
           },
-          { name: "Carriers", entries: hexRange(0xe200, 0xe211) },
+          { name: "Carriers", entries: hexRange(0xe200, 0xe201) },
           { name: "Accessories (E3xx)", entries: hexRange(0xe300, 0xe316) },
         ];
 
@@ -219,14 +221,13 @@
           container.appendChild(heading);
           const grid = document.createElement("div");
           grid.className = "clicker-grid";
-          group.entries.forEach(({ label, cp }) => {
-            if (!cp) return;
-            const ch = String.fromCharCode(parseInt(cp, 16));
+          group.entries.forEach(({ label, ch }) => {
+            if (!ch) return;
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "clicker-btn";
-            btn.title = `${label} (U+${cp})`;
-            btn.onclick = () => insertGlyph(cp);
+            btn.title = `${label} (${codepointTitle(ch)})`;
+            btn.onclick = () => insertAtCursor(ch);
             const glyph = document.createElement("span");
             glyph.className = "clicker-glyph";
             if (group.isCombining) {
@@ -390,6 +391,7 @@
       <label>Mode: </label>
       <label><input type="radio" name="mode" value="english" checked onchange="update()"> English</label>
       <label><input type="radio" name="mode" value="arabizi" onchange="update()"> Arabizi (Lebanese)</label>
+      <label><input type="radio" name="mode" value="cantonese" onchange="update()"> Cantonese (Jyutping)</label>
       <label><input type="radio" name="mode" value="glyphs" onchange="update()"> Glyphs</label>
       <br /><br />
       <label for="text">Text: </label><br /><textarea
