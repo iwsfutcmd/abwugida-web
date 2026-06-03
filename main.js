@@ -235,7 +235,7 @@ class Parser {
                case "i":
                case "ɪ":
                case "e":
-                    // /oʊ/ is really just perceived as /o:/ by most. Including by Alice.
+                    // /eɪ/ is really just perceived as /e:/ by most. Including by Alice.
                     if (next == "ɪ") {
                         this.index++;
                     }         
