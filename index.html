@@ -150,6 +150,42 @@
           : "pre";
       }
 
+      // Single background setting, shared by the on-screen output and the
+      // exported SVG/PNG. On -> solid color; off -> transparent (shown as a
+      // checkerboard on screen, truly transparent in the export). Persisted
+      // to localStorage so it's remembered across visits.
+      const BG_KEY = "abwugida.bg";
+
+      function setBackground() {
+        const on = document.getElementById("bg-toggle").checked;
+        const color = document.getElementById("bg-color").value;
+        document.getElementById("bg-color").disabled = !on;
+        const card = document.querySelector(".output-card");
+        if (on) {
+          card.classList.remove("checker");
+          card.style.background = color;
+        } else {
+          card.classList.add("checker");
+          card.style.background = "";
+        }
+        try {
+          localStorage.setItem(BG_KEY, JSON.stringify({ on, color }));
+        } catch {}
+        // Keep the export preview in sync if it's open.
+        if (window.rerenderExportPreview) window.rerenderExportPreview();
+      }
+
+      function restoreBackground() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(BG_KEY) || "null");
+          if (saved) {
+            document.getElementById("bg-toggle").checked = !!saved.on;
+            if (saved.color) document.getElementById("bg-color").value = saved.color;
+          }
+        } catch {}
+        setBackground();
+      }
+
       let CHARMAP = {};
       fetch("./charmap.json")
         .then((r) => r.text())
@@ -535,9 +571,11 @@
       }
 
       /* ---- Output card ---- */
-      /* Output stays on white in both themes — the glyph font is drawn for
-         black-on-paper, so the surface and ink colors are pinned regardless
-         of the light/dark UI around it. */
+      /* The glyph font is drawn black-on-paper, so the ink color is pinned
+         regardless of the light/dark UI. The background color is driven by the
+         "Background" option (setBackground): a solid color, or — when off —
+         the checkerboard below to signal transparency (matching the export
+         preview). Default solid #ffffff is set here to avoid a load flash. */
       .output-card {
         background: #ffffff;
         color: #1b1b1f;
@@ -549,6 +587,15 @@
         display: flex;
         align-items: center;
         overflow-x: auto;
+      }
+      .output-card.checker {
+        background-color: #ffffff;
+        background-image: linear-gradient(45deg, #e9e9ee 25%, transparent 25%),
+          linear-gradient(-45deg, #e9e9ee 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #e9e9ee 75%),
+          linear-gradient(-45deg, transparent 75%, #e9e9ee 75%);
+        background-size: 16px 16px;
+        background-position: 0 0, 0 8px, 8px -8px, -8px 0;
       }
       #display {
         font-family: "Abwugida";
@@ -658,12 +705,14 @@
         background: rgba(0, 0, 0, 0.4);
         opacity: 0;
         visibility: hidden;
+        pointer-events: none;
         transition: opacity 0.2s, visibility 0.2s;
         z-index: 20;
       }
       .scrim.open {
         opacity: 1;
         visibility: visible;
+        pointer-events: auto;
       }
       .drawer {
         position: fixed;
@@ -791,11 +840,15 @@
       .topbar {
         position: relative;
       }
+      /* Center via inset+margin (not transform) so the .icon-btn:active
+         scale transform doesn't clobber the centering and make the button
+         jump on press. */
       .topbar-center {
         position: absolute;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        inset: 0;
+        margin: auto;
+        width: 44px;
+        height: 44px;
       }
       .modal {
         position: fixed;
@@ -808,11 +861,16 @@
         background: rgba(0, 0, 0, 0.4);
         opacity: 0;
         visibility: hidden;
+        /* pointer-events flips immediately (no transition), so the fading-out
+           full-screen overlay can't swallow a click aimed at the button
+           beneath it during the 0.2s close animation. */
+        pointer-events: none;
         transition: opacity 0.2s, visibility 0.2s;
       }
       .modal.open {
         opacity: 1;
         visibility: visible;
+        pointer-events: auto;
       }
       .modal-card {
         background: var(--surface);
@@ -875,7 +933,8 @@
         cursor: pointer;
         user-select: none;
       }
-      .bg-control input[type="color"] {
+      .bg-control input[type="color"],
+      #bg-color {
         width: 26px;
         height: 26px;
         padding: 0;
@@ -884,7 +943,8 @@
         background: none;
         cursor: pointer;
       }
-      .bg-control input[type="color"]:disabled {
+      .bg-control input[type="color"]:disabled,
+      #bg-color:disabled {
         opacity: 0.4;
         cursor: default;
       }
@@ -1014,6 +1074,17 @@
             <input type="checkbox" id="wrap" onchange="setWrap()" />
             <label for="wrap">Wrap text</label>
           </div>
+          <div class="opt-row">
+            <input type="checkbox" id="bg-toggle" checked onchange="setBackground()" />
+            <label for="bg-toggle">Background</label>
+            <input
+              type="color"
+              id="bg-color"
+              value="#ffffff"
+              oninput="setBackground()"
+              style="margin-left: auto"
+            />
+          </div>
         </div>
 
         <div class="opt-group" id="phonetic-output">
@@ -1059,11 +1130,7 @@
           ></svg>
         </div>
         <div class="export-bar">
-          <label class="bg-control">
-            <input type="checkbox" id="export-bg-toggle" />
-            Background
-            <input type="color" id="export-bg-color" value="#ffffff" disabled />
-          </label>
+          <span class="muted">Background set in options (⚙)</span>
           <div class="export-actions">
             <button type="button" class="btn" id="export-svg-btn" disabled>
               SVG
@@ -1124,8 +1191,10 @@
 
         const modal = document.getElementById("export-modal");
         const svgEl = document.getElementById("export-svg");
-        const bgToggle = document.getElementById("export-bg-toggle");
-        const bgColor = document.getElementById("export-bg-color");
+        // Background is configured once in the options drawer (setBackground)
+        // and shared with the on-screen output; the export just reads it.
+        const bgToggle = document.getElementById("bg-toggle");
+        const bgColor = document.getElementById("bg-color");
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
         const statusEl = document.getElementById("export-status");
@@ -1360,12 +1429,20 @@
           }, "image/png");
         }
 
+        let openedAt = 0;
         const openModal = () => {
           modal.classList.add("open");
           modal.setAttribute("aria-hidden", "false");
+          openedAt = performance.now();
           render();
         };
         const closeModal = () => {
+          // A macOS Force Touch "deep press" fires a SECOND click in the same
+          // gesture as the opening click; landing on the backdrop, it would
+          // slam the modal shut the instant it opened. Refuse any close that
+          // arrives in that same-gesture window — guards every close route
+          // (backdrop, X, Escape), so the phantom can't reach any of them.
+          if (performance.now() - openedAt < 400) return;
           modal.classList.remove("open");
           modal.setAttribute("aria-hidden", "true");
         };
@@ -1378,20 +1455,26 @@
         document.addEventListener("keydown", (e) => {
           if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
         });
-        bgToggle.addEventListener("change", () => {
-          bgColor.disabled = !bgToggle.checked;
-          render();
-        });
-        bgColor.addEventListener("input", () => {
-          if (bgToggle.checked) render();
-        });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
+
+        // setBackground() (options drawer) calls this to refresh the preview
+        // when the shared background setting changes while the modal is open.
+        window.rerenderExportPreview = () => {
+          if (modal.classList.contains("open")) render();
+        };
+
+        // Warm HarfBuzz + every weight's font on page load so the first export
+        // is instant (instead of paying the WASM/font download on first click).
+        ensureHb()
+          .then(() => Promise.all(Object.keys(FONT_BY_WEIGHT).map((w) => getFont(w))))
+          .catch((e) => console.warn("HarfBuzz preload failed:", e));
       })();
 
       update();
       setFontSize();
       setWeight();
+      restoreBackground();
     </script>
   </body>
 </html>
