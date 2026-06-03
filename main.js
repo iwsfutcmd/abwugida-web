@@ -303,7 +303,7 @@ class TripleOutput {
         }
         let punct_file;
         if (ch == "\n") {
-            return new TripleOutput("<br>", "⏎", "⏎", "");
+            return new TripleOutput("<br>", "⏎", "⏎", "\n");
         } else if (ch == " ") {
             return new TripleOutput("<div class=space>&nbsp;</div>", " ", " ", " ")
         } else if (punct_file = TripleOutput.punctuationFileName(ch)) {
