@@ -785,12 +785,134 @@
         flex-direction: column;
         gap: 8px;
       }
+
+      /* ---- Export modal ---- */
+      /* Center button sits dead-center regardless of the side widths. */
+      .topbar {
+        position: relative;
+      }
+      .topbar-center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+      }
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+      }
+      .modal.open {
+        opacity: 1;
+        visibility: visible;
+      }
+      .modal-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        width: min(92vw, 560px);
+        max-height: 90dvh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 18px 20px;
+      }
+      .modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .modal-head h2 {
+        font-size: 1.05rem;
+        margin: 0;
+      }
+      /* Checkerboard signals transparency behind the (possibly transparent) art. */
+      .export-preview {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        overflow: hidden;
+        background-color: #ffffff;
+        background-image: linear-gradient(45deg, #e9e9ee 25%, transparent 25%),
+          linear-gradient(-45deg, #e9e9ee 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #e9e9ee 75%),
+          linear-gradient(-45deg, transparent 75%, #e9e9ee 75%);
+        background-size: 16px 16px;
+        background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      }
+      #export-svg {
+        display: block;
+        width: 100%;
+        max-height: 42vh;
+      }
+      .export-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .bg-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.92rem;
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+      }
+      .bg-control input[type="color"] {
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: none;
+        cursor: pointer;
+      }
+      .bg-control input[type="color"]:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .export-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .export-status {
+        font-size: 0.85rem;
+        color: var(--muted);
+        min-height: 1.1em;
+      }
     </style>
   </head>
   <body>
     <div class="app">
       <header class="topbar">
         <h1>Abwugida</h1>
+        <button
+          type="button"
+          id="export-toggle"
+          class="icon-btn topbar-center"
+          aria-label="Export image"
+          aria-haspopup="dialog"
+          title="Export as SVG / PNG"
+        >
+          ⤓
+        </button>
         <button
           type="button"
           id="options-toggle"
@@ -912,6 +1034,49 @@
       </div>
     </aside>
 
+    <!-- Export modal -->
+    <div
+      class="modal"
+      id="export-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Export image"
+      aria-hidden="true"
+    >
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>Export image</h2>
+          <button type="button" id="export-close" class="icon-btn" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div class="export-preview">
+          <svg
+            id="export-svg"
+            viewBox="0 0 128 128"
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+          ></svg>
+        </div>
+        <div class="export-bar">
+          <label class="bg-control">
+            <input type="checkbox" id="export-bg-toggle" />
+            Background
+            <input type="color" id="export-bg-color" value="#ffffff" disabled />
+          </label>
+          <div class="export-actions">
+            <button type="button" class="btn" id="export-svg-btn" disabled>
+              SVG
+            </button>
+            <button type="button" class="btn btn-accent" id="export-png-btn" disabled>
+              PNG
+            </button>
+          </div>
+        </div>
+        <div class="export-status" id="export-status"></div>
+      </div>
+    </div>
+
     <script type="text/javascript">
       buildClicker();
       document.getElementById("text").addEventListener("keydown", glyphsKeydown);
@@ -936,6 +1101,292 @@
         document.addEventListener("keydown", (e) => {
           if (e.key === "Escape") close();
         });
+      })();
+
+      // Export: shape the current output with HarfBuzz (the vendored hb-vector
+      // build, COLR v0/v1 -> SVG) and download as SVG or PNG. HarfBuzz is a big
+      // WASM module, so it's lazy-loaded on first use.
+      (function () {
+        const HB_MODULE = "./vendor/harfbuzzjs/index.mjs";
+        const FONT_BY_WEIGHT = {
+          100: "font/Abwugida-Thin.ttf",
+          400: "font/Abwugida-Regular.ttf",
+          700: "font/Abwugida-Bold.ttf",
+        };
+        const DEFAULT_VIEWBOX = "0 0 128 128";
+        const SVG_NS = "http://www.w3.org/2000/svg";
+        // PNG rasterization: longest side in px (SVG is vector, so this is
+        // just output resolution). Ink-crop scan resolution and alpha cutoff.
+        const PNG_MAX = 2048;
+        const CROP_RASTER_MAX = 512;
+        const CROP_ALPHA_THRESHOLD = 8;
+        const CROP_PADDING = 0.1;
+
+        const modal = document.getElementById("export-modal");
+        const svgEl = document.getElementById("export-svg");
+        const bgToggle = document.getElementById("export-bg-toggle");
+        const bgColor = document.getElementById("export-bg-color");
+        const svgBtn = document.getElementById("export-svg-btn");
+        const pngBtn = document.getElementById("export-png-btn");
+        const statusEl = document.getElementById("export-status");
+
+        let hb = null; // the loaded module
+        const fontCache = {}; // weight -> hb.Font
+        let seq = 0; // guards against overlapping async renders
+
+        function setStatus(msg) {
+          statusEl.textContent = msg || "";
+        }
+        function setEnabled(on) {
+          svgBtn.disabled = !on;
+          pngBtn.disabled = !on;
+        }
+
+        async function ensureHb() {
+          if (!hb) hb = await import(HB_MODULE);
+          return hb;
+        }
+
+        async function getFont(weight) {
+          if (fontCache[weight]) return fontCache[weight];
+          const lib = await ensureHb();
+          const url = FONT_BY_WEIGHT[weight] || FONT_BY_WEIGHT[400];
+          const data = new Uint8Array(await (await fetch(url)).arrayBuffer());
+          const blob = new lib.Blob(data.buffer);
+          const face = new lib.Face(blob, 0);
+          const font = new lib.Font(face);
+          font._upem = face.upem;
+          fontCache[weight] = font;
+          return font;
+        }
+
+        function paletteIndex() {
+          const v = document.getElementById("palette").value;
+          if (v === "normal") return 0;
+          const m = /--palette-(\d+)/.exec(v);
+          return m ? parseInt(m[1], 10) : 0;
+        }
+
+        // Shape the output to a standalone SVG string. Splits on explicit
+        // newlines and stacks each line by the font's line height, since
+        // HarfBuzz shaping itself doesn't break lines.
+        async function shapeToSvg() {
+          const text = document.getElementById("display").textContent;
+          if (!text) return null;
+          const weight = document.getElementById("weight").value;
+          const palette = paletteIndex();
+          const lib = await ensureHb();
+          const font = await getFont(weight);
+          const ext = font.hExtents();
+          const lineHeight =
+            ext.ascender - ext.descender + ext.lineGap || font._upem || 1000;
+
+          const glyphs = [];
+          text.split("\n").forEach((line, li) => {
+            if (!line) return;
+            const baseY = -li * lineHeight;
+            const buffer = new lib.Buffer();
+            buffer.addText(line.normalize("NFD"));
+            buffer.guessSegmentProperties();
+            lib.shape(font, buffer);
+            let ax = 0;
+            let ay = 0;
+            for (const g of buffer.getGlyphInfosAndPositions()) {
+              glyphs.push({
+                glyph: g.codepoint,
+                x: ax + (g.xOffset ?? 0),
+                y: baseY + ay + (g.yOffset ?? 0),
+              });
+              ax += g.xAdvance ?? 0;
+              ay += g.yAdvance ?? 0;
+            }
+          });
+          if (!glyphs.length) return null;
+          return font.glyphsToSvg(glyphs, { palette });
+        }
+
+        // HarfBuzz frames glyphs by font metrics / COLR clip boxes, leaving
+        // slack around the ink (and gradients paint via a clipped rect that
+        // getBBox can't see). Rasterize and alpha-scan for a tight viewBox.
+        async function inkViewBox(svgString, viewBox) {
+          const [vx, vy, vw, vh] = viewBox.split(/\s+/).map(Number);
+          if (!(vw > 0 && vh > 0)) return viewBox;
+          const scale = Math.min(1, CROP_RASTER_MAX / Math.max(vw, vh));
+          const cw = Math.max(1, Math.round(vw * scale));
+          const ch = Math.max(1, Math.round(vh * scale));
+          const url = URL.createObjectURL(
+            new Blob([svgString], { type: "image/svg+xml" })
+          );
+          let img;
+          try {
+            img = await loadImage(url);
+          } catch {
+            URL.revokeObjectURL(url);
+            return viewBox;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = cw;
+          canvas.height = ch;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, cw, ch);
+          URL.revokeObjectURL(url);
+          let data;
+          try {
+            data = ctx.getImageData(0, 0, cw, ch).data;
+          } catch {
+            return viewBox;
+          }
+          let minx = cw,
+            miny = ch,
+            maxx = -1,
+            maxy = -1;
+          for (let y = 0; y < ch; y++) {
+            for (let x = 0; x < cw; x++) {
+              if (data[(y * cw + x) * 4 + 3] > CROP_ALPHA_THRESHOLD) {
+                if (x < minx) minx = x;
+                if (x > maxx) maxx = x;
+                if (y < miny) miny = y;
+                if (y > maxy) maxy = y;
+              }
+            }
+          }
+          if (maxx < 0) return viewBox;
+          const ix = vx + minx / scale;
+          const iy = vy + miny / scale;
+          const iw = (maxx - minx + 1) / scale;
+          const ih = (maxy - miny + 1) / scale;
+          const pad = Math.min(iw, ih) * CROP_PADDING;
+          return `${ix - pad} ${iy - pad} ${iw + pad * 2} ${ih + pad * 2}`;
+        }
+
+        function loadImage(url) {
+          return new Promise((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = url;
+          });
+        }
+
+        async function render() {
+          const mine = ++seq;
+          setEnabled(false);
+          setStatus(hb ? "Rendering…" : "Loading HarfBuzz…");
+          try {
+            const svgString = await shapeToSvg();
+            if (mine !== seq) return; // superseded
+            if (!svgString) {
+              svgEl.replaceChildren();
+              svgEl.setAttribute("viewBox", DEFAULT_VIEWBOX);
+              setStatus(
+                document.getElementById("display").textContent
+                  ? "Nothing to render."
+                  : "Type something first."
+              );
+              return;
+            }
+            const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+            const rendered = document.importNode(doc.documentElement, true);
+            const hbViewBox = rendered.getAttribute("viewBox") ?? DEFAULT_VIEWBOX;
+            const viewBox = await inkViewBox(svgString, hbViewBox);
+            if (mine !== seq) return;
+
+            const children = [...rendered.childNodes];
+            if (bgToggle.checked) {
+              const [bx, by, bw, bh] = viewBox.split(/\s+/).map(Number);
+              const rect = document.createElementNS(SVG_NS, "rect");
+              rect.setAttribute("x", bx);
+              rect.setAttribute("y", by);
+              rect.setAttribute("width", bw);
+              rect.setAttribute("height", bh);
+              rect.setAttribute("fill", bgColor.value);
+              children.unshift(rect);
+            }
+            svgEl.setAttribute("viewBox", viewBox);
+            svgEl.replaceChildren(...children);
+            setEnabled(true);
+            setStatus("");
+          } catch (e) {
+            console.error("Export render error:", e);
+            if (mine === seq) setStatus("Render failed: " + (e?.message || e));
+          }
+        }
+
+        function triggerDownload(blob, filename) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          link.click();
+          URL.revokeObjectURL(url);
+        }
+
+        function downloadSvg() {
+          triggerDownload(
+            new Blob([svgEl.outerHTML], { type: "image/svg+xml" }),
+            "abwugida.svg"
+          );
+        }
+
+        async function downloadPng() {
+          const [, , vw, vh] = (svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX)
+            .split(/\s+/)
+            .map(Number);
+          if (!(vw > 0 && vh > 0)) return;
+          const scale = PNG_MAX / Math.max(vw, vh);
+          const w = Math.max(1, Math.round(vw * scale));
+          const h = Math.max(1, Math.round(vh * scale));
+          const clone = svgEl.cloneNode(true);
+          clone.setAttribute("width", w);
+          clone.setAttribute("height", h);
+          const url = URL.createObjectURL(
+            new Blob([clone.outerHTML], { type: "image/svg+xml" })
+          );
+          let img;
+          try {
+            img = await loadImage(url);
+          } catch {
+            URL.revokeObjectURL(url);
+            setStatus("PNG export failed.");
+            return;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          canvas.toBlob((blob) => {
+            if (blob) triggerDownload(blob, "abwugida.png");
+          }, "image/png");
+        }
+
+        const openModal = () => {
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          render();
+        };
+        const closeModal = () => {
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+        };
+
+        document.getElementById("export-toggle").addEventListener("click", openModal);
+        document.getElementById("export-close").addEventListener("click", closeModal);
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeModal();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
+        });
+        bgToggle.addEventListener("change", () => {
+          bgColor.disabled = !bgToggle.checked;
+          render();
+        });
+        bgColor.addEventListener("input", () => {
+          if (bgToggle.checked) render();
+        });
+        svgBtn.addEventListener("click", downloadSvg);
+        pngBtn.addEventListener("click", downloadPng);
       })();
 
       update();
