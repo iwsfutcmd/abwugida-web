@@ -1175,6 +1175,10 @@
       // WASM module, so it's lazy-loaded on first use.
       (function () {
         const HB_MODULE = "./vendor/harfbuzzjs/index.mjs";
+        // Pretext (pure-JS, no WASM) does the line breaking: it measures the
+        // Abwugida glyphs with canvas measureText and tells us where each line
+        // wraps. HarfBuzz still shapes/colors each resulting line.
+        const PRETEXT_MODULE = "./vendor/pretext/layout.js";
         const FONT_BY_WEIGHT = {
           100: "font/Abwugida-Thin.ttf",
           400: "font/Abwugida-Regular.ttf",
@@ -1200,6 +1204,7 @@
         const statusEl = document.getElementById("export-status");
 
         let hb = null; // the loaded module
+        let pretext = null; // the loaded pretext module
         const fontCache = {}; // weight -> hb.Font
         let seq = 0; // guards against overlapping async renders
 
@@ -1214,6 +1219,36 @@
         async function ensureHb() {
           if (!hb) hb = await import(HB_MODULE);
           return hb;
+        }
+
+        async function ensurePretext() {
+          if (!pretext) pretext = await import(PRETEXT_MODULE);
+          return pretext;
+        }
+
+        // Decide the lines to render. With "Wrap text" on, mirror exactly what
+        // the on-screen output box shows: pretext re-runs the browser's own
+        // wrapping (canvas measureText) at the display's font, weight and
+        // content width. Otherwise we just honor explicit newlines, as before.
+        async function computeLines(text) {
+          if (!document.getElementById("wrap").checked) {
+            return text.split("\n");
+          }
+          const pt = await ensurePretext();
+          const displayEl = document.getElementById("display");
+          const cs = getComputedStyle(displayEl);
+          const fontSize = parseFloat(cs.fontSize) || 80;
+          const weight = cs.fontWeight || "400";
+          const maxWidth = displayEl.clientWidth || 1;
+          const prepared = pt.prepareWithSegments(
+            text,
+            `${weight} ${fontSize}px Abwugida`,
+            { whiteSpace: "pre-wrap" }
+          );
+          // lineHeight here only affects pretext's own height math, which we
+          // ignore — HarfBuzz stacks the lines using the font's own metrics.
+          const { lines } = pt.layoutWithLines(prepared, maxWidth, fontSize);
+          return lines.map((l) => l.text);
         }
 
         async function getFont(weight) {
@@ -1236,9 +1271,10 @@
           return m ? parseInt(m[1], 10) : 0;
         }
 
-        // Shape the output to a standalone SVG string. Splits on explicit
-        // newlines and stacks each line by the font's line height, since
-        // HarfBuzz shaping itself doesn't break lines.
+        // Shape the output to a standalone SVG string. computeLines() decides
+        // the line breaks (pretext word-wrap when enabled, else explicit
+        // newlines); each line is shaped by HarfBuzz and stacked by the font's
+        // line height, since HarfBuzz shaping itself doesn't break lines.
         async function shapeToSvg() {
           const text = document.getElementById("display").textContent;
           if (!text) return null;
@@ -1250,8 +1286,9 @@
           const lineHeight =
             ext.ascender - ext.descender + ext.lineGap || font._upem || 1000;
 
+          const lines = await computeLines(text);
           const glyphs = [];
-          text.split("\n").forEach((line, li) => {
+          lines.forEach((line, li) => {
             if (!line) return;
             const baseY = -li * lineHeight;
             const buffer = new lib.Buffer();
@@ -1464,11 +1501,12 @@
           if (modal.classList.contains("open")) render();
         };
 
-        // Warm HarfBuzz + every weight's font on page load so the first export
-        // is instant (instead of paying the WASM/font download on first click).
+        // Warm HarfBuzz + every weight's font (and pretext) on page load so the
+        // first export is instant (instead of paying the download on first click).
         ensureHb()
           .then(() => Promise.all(Object.keys(FONT_BY_WEIGHT).map((w) => getFont(w))))
           .catch((e) => console.warn("HarfBuzz preload failed:", e));
+        ensurePretext().catch((e) => console.warn("pretext preload failed:", e));
       })();
 
       update();
