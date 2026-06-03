@@ -74,6 +74,73 @@
         );
       }
 
+      // Click a glyph to cycle its variation selector. We map the click to the
+      // code point under the cursor, walk backwards to the nearest carrier
+      // (U+E200 / U+E201), then toggle/advance a variation selector right after
+      // it: none -> FE00, FE0n -> FE0(n+1), FE08 -> wraps back to FE00.
+      const VS_MIN = 0xfe00; // VS1
+      const VS_MAX = 0xfe08; // VS9 (cycle ceiling)
+
+      function cycleVariation(event) {
+        const display = document.getElementById("display");
+        const text = display.textContent;
+        const textNode = [...display.childNodes].find(
+          (n) => n.nodeType === Node.TEXT_NODE
+        );
+        if (!textNode || !window.Intl || !Intl.Segmenter) return;
+
+        // Hit-test grapheme clusters to find the clicked cluster's code-unit
+        // offset (zero-advance accessories overlap, so go by visual cluster).
+        let clusterStart = null;
+        const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+        for (const { segment, index } of seg.segment(text)) {
+          const range = document.createRange();
+          range.setStart(textNode, index);
+          range.setEnd(textNode, index + segment.length);
+          const inside = [...range.getClientRects()].some(
+            (r) =>
+              event.clientX >= r.left &&
+              event.clientX <= r.right &&
+              event.clientY >= r.top &&
+              event.clientY <= r.bottom
+          );
+          if (inside) {
+            clusterStart = index;
+            break;
+          }
+        }
+        if (clusterStart === null) return;
+
+        // Work in code points. Convert the code-unit offset to a cp index.
+        const cps = [...text];
+        let clicked = 0;
+        for (let cu = 0; cu < clusterStart; clicked++) cu += cps[clicked].length;
+
+        // Walk backwards (inclusive) to the nearest E200/E201 carrier.
+        let carrier = -1;
+        for (let i = clicked; i >= 0; i--) {
+          const cp = cps[i].codePointAt(0);
+          if (cp === 0xe200 || cp === 0xe201) {
+            carrier = i;
+            break;
+          }
+        }
+        if (carrier === -1) return;
+
+        const next =
+          carrier + 1 < cps.length ? cps[carrier + 1].codePointAt(0) : null;
+        const isVS = next !== null && next >= 0xfe00 && next <= 0xfe0f;
+
+        if (!isVS) {
+          cps.splice(carrier + 1, 0, String.fromCodePoint(VS_MIN));
+        } else {
+          const bumped = next >= VS_MAX ? VS_MIN : next + 1;
+          cps[carrier + 1] = String.fromCodePoint(bumped);
+        }
+
+        display.textContent = cps.join("");
+      }
+
       function setWrap() {
         const wrap = document.getElementById("wrap").checked;
         // pre-wrap wraps long lines; pre keeps everything on one line.
@@ -754,7 +821,7 @@
       </div>
 
       <section class="output-card" aria-label="Output">
-        <div id="display" class="abwugida"></div>
+        <div id="display" class="abwugida" onclick="cycleVariation(event)"></div>
       </section>
 
       <div class="input-wrap">
