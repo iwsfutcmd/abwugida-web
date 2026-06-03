@@ -67,6 +67,13 @@
         document.getElementById("display").style.textAlign = align;
       }
 
+      function setPalette() {
+        const palette = document.getElementById("palette").value;
+        [...document.getElementsByClassName("abwugida")].forEach(
+          (e) => (e.style.fontPalette = palette)
+        );
+      }
+
       function setWrap() {
         const wrap = document.getElementById("wrap").checked;
         // pre-wrap wraps long lines; pre keeps everything on one line.
@@ -84,6 +91,105 @@
           CHARMAP = JSON.parse(t.replace(/,(\s*[}\]])/g, "$1"));
         })
         .catch((e) => console.warn("Could not load charmap.json:", e));
+
+      // ---- CPAL palette names ----
+      // Browsers don't expose CPAL palette labels to CSS/JS, so we read them
+      // out of the font binary ourselves: parse the sfnt table directory, then
+      // the CPAL table's palette-label name IDs, resolving each against the
+      // name table. Returns an array of palette display names (index 0..n-1),
+      // or null if the font has no usable CPAL labels.
+      function readPaletteNames(buf) {
+        const dv = new DataView(buf);
+        const numTables = dv.getUint16(4);
+        const tables = {};
+        for (let i = 0; i < numTables; i++) {
+          const rec = 12 + i * 16;
+          const tag = String.fromCharCode(
+            dv.getUint8(rec), dv.getUint8(rec + 1),
+            dv.getUint8(rec + 2), dv.getUint8(rec + 3)
+          );
+          tables[tag] = { offset: dv.getUint32(rec + 8) };
+        }
+        if (!tables.CPAL || !tables.name) return null;
+
+        const cp = tables.CPAL.offset;
+        // CPAL header: version(0) numPaletteEntries(2) numPalettes(4)
+        // numColorRecords(6) ...
+        const version = dv.getUint16(cp);
+        const numPalettes = dv.getUint16(cp + 4);
+        // Palette labels only exist in CPAL v1.
+        if (version < 1) return null;
+        // v1 header: after the v0 header (12 bytes) + colorRecordIndices
+        // (2 * numPalettes) come three Offset32s; the 2nd is the palette
+        // label array (name IDs), measured from the start of the CPAL table.
+        const v1 = cp + 12 + numPalettes * 2;
+        const labelArrayOff = dv.getUint32(v1 + 4);
+        if (!labelArrayOff) return null;
+        const labelBase = cp + labelArrayOff;
+
+        const names = resolveNames(dv, tables.name.offset);
+        const out = [];
+        for (let i = 0; i < numPalettes; i++) {
+          const nameID = dv.getUint16(labelBase + i * 2);
+          out.push(nameID !== 0xffff && names[nameID] ? names[nameID] : `Palette ${i}`);
+        }
+        return out;
+      }
+
+      // Build a { nameID: string } map from the 'name' table, preferring the
+      // Windows (UTF-16BE) records and falling back to Mac (Latin-1).
+      function resolveNames(dv, nameOff) {
+        const count = dv.getUint16(nameOff + 2);
+        const stringOff = nameOff + dv.getUint16(nameOff + 4);
+        const out = {};
+        for (let i = 0; i < count; i++) {
+          const rec = nameOff + 6 + i * 12;
+          const platformID = dv.getUint16(rec);
+          const nameID = dv.getUint16(rec + 6);
+          const len = dv.getUint16(rec + 8);
+          const off = stringOff + dv.getUint16(rec + 10);
+          let str = "";
+          if (platformID === 3 || platformID === 0) {
+            for (let j = 0; j < len; j += 2) str += String.fromCharCode(dv.getUint16(off + j));
+          } else {
+            for (let j = 0; j < len; j++) str += String.fromCharCode(dv.getUint8(off + j));
+          }
+          // Prefer Windows names; don't let a Mac record clobber one.
+          if (out[nameID] === undefined || platformID === 3) out[nameID] = str;
+        }
+        return out;
+      }
+
+      // Populate the #palette <select> and inject one @font-palette-values rule
+      // per palette index, naming each from the font's own CPAL labels.
+      function buildPaletteSwitcher() {
+        fetch("font/Abwugida-Regular.ttf")
+          .then((r) => r.arrayBuffer())
+          .then((buf) => {
+            const names = readPaletteNames(buf);
+            if (!names || names.length < 2) return; // keep the static fallback
+            const select = document.getElementById("palette");
+            const css = [];
+            select.innerHTML = "";
+            names.forEach((name, i) => {
+              const opt = document.createElement("option");
+              // font-palette: normal already selects base palette 0.
+              opt.value = i === 0 ? "normal" : `--palette-${i}`;
+              opt.textContent = name;
+              select.appendChild(opt);
+              if (i > 0) {
+                css.push(
+                  `@font-palette-values --palette-${i} { font-family: "Abwugida"; base-palette: ${i}; }`
+                );
+              }
+            });
+            const style = document.createElement("style");
+            style.textContent = css.join("\n");
+            document.head.appendChild(style);
+          })
+          .catch((e) => console.warn("Could not read font palettes:", e));
+      }
+      buildPaletteSwitcher();
 
       function glyphsKeydown(e) {
         if (e.metaKey) return;
@@ -234,6 +340,10 @@
         src: url("font/Abwugida-Bold.ttf");
         font-weight: 700;
       }
+      /* The CPAL palette switcher's @font-palette-values rules and the
+         #palette <option>s are generated at runtime by buildPaletteSwitcher(),
+         which reads the palette names straight out of the font's CPAL/name
+         tables — nothing here is hardcoded per palette. */
 
       /* ---- Theme tokens ---- */
       :root {
@@ -550,7 +660,9 @@
         font-size: 0.92rem;
       }
       #fontsize,
-      #weight {
+      #weight,
+      #align,
+      #palette {
         font-family: var(--ui);
         font-size: 1rem;
         padding: 8px 10px;
@@ -699,6 +811,14 @@
               <option value="left" selected>Left</option>
               <option value="center">Center</option>
               <option value="right">Right</option>
+            </select>
+          </div>
+          <div class="opt-row">
+            <label for="palette">Palette</label>
+            <!-- options populated by buildPaletteSwitcher() from the font's
+                 CPAL palette names; this default is the load-time fallback -->
+            <select id="palette" onchange="setPalette()">
+              <option value="normal" selected>Default</option>
             </select>
           </div>
           <div class="opt-row">
