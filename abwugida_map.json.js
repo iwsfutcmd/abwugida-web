@@ -6,6 +6,7 @@ const ABWUGIDA_MAP = {
     "k": "\uE200\uE302",
     "g": "\uE201\uE302",
     "q": "\uE200\uE303",
+    "ɢ": "\uE201\uE303",
     "ʔ": "\uE200\uE304",
     "tʃ": "\uE200\uE305",
     "dʒ": "\uE201\uE305",
@@ -30,15 +31,10 @@ const ABWUGIDA_MAP = {
     "l": "\uE201\uE312",
     "w": "\uE201\uE313",
     "j": "\uE201\uE314",
-    "tˤ": "\uE200\uE301\uE316",
-    "dˤ": "\uE201\uE301\uE316",
-    "sˤ": "\uE200\uE306\uE316",
-    "zˤ": "\uE201\uE306\uE316",
+    // ɫ (velarized l) and ɥ are distinct glyphs, not base+modifier derivations.
+    // Modifier consonants (tˤ, sˤ, kʷ, …) derive via ABWUGIDA_MODIFIERS below.
     "ɫ": "\uE201\uE312\uE316",
-    "ðˤ": "\uE201\uE309\uE316",
     "ɥ": "\uE201\uE315",
-    "kʷ": "\uE200\uE302\uE313",
-    "gʷ": "\uE201\uE302\uE313",
     "blank_backward": "\uE200",
     "blank_forward": "\uE201",
     "aː": "\uE102",
@@ -55,3 +51,10 @@ const ABWUGIDA_MAP = {
     "˩˧": "\uE126",
     "˧": "\uE127",
 }
+
+// Secondary-articulation modifiers. A trailing modifier letter on a consonant
+// phoneme always maps to a fixed accessory codepoint (applied by phonemeToCps).
+const ABWUGIDA_MODIFIERS = {
+    "ˤ": "\uE316", // ˤ  emphatic / pharyngealized
+    "ʷ": "\uE313", // ʷ  labialized
+};

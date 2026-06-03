@@ -15,7 +15,9 @@
           const mode = document.querySelector('input[name="mode"]:checked')?.value || 'english';
           const text = document.getElementById("text").value;
           let details;
-          if (mode === 'arabizi') {
+          if (mode === 'ipa') {
+            details = ipaToDetails(text);
+          } else if (mode === 'arabizi') {
             details = arabiziToDetails(text);
           } else if (mode === 'cantonese') {
             details = cantoneseToDetails(text);
@@ -173,7 +175,7 @@
       function buildClicker() {
         const carrierCh = ABWUGIDA_MAP["blank_forward"];
         const namedEntries = (keys) =>
-          keys.map((key) => ({ label: key, ch: ABWUGIDA_MAP[key] }));
+          keys.map((key) => ({ label: key, ch: phonemeToCps(key) }));
         const hexRange = (start, end) => {
           const out = [];
           for (let c = start; c <= end; c++) {
@@ -390,6 +392,7 @@
     <div id="form">
       <label>Mode: </label>
       <label><input type="radio" name="mode" value="english" checked onchange="update()"> English</label>
+      <label><input type="radio" name="mode" value="ipa" onchange="update()"> IPA</label>
       <label><input type="radio" name="mode" value="arabizi" onchange="update()"> Arabizi (Lebanese)</label>
       <label><input type="radio" name="mode" value="cantonese" onchange="update()"> Cantonese (Jyutping)</label>
       <label><input type="radio" name="mode" value="glyphs" onchange="update()"> Glyphs</label>

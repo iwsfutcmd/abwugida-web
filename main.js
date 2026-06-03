@@ -72,6 +72,30 @@ const IPA_VOWELS = [
 
 const BOUNDARIES = ["ˈ", "ː", "ˌ", "."];
 
+// How each vowel phoneme is written in the "Parsed" readout: long vowels take a
+// macron rather than a ː length mark. (Does not affect the IPA or glyph output.)
+const VOWEL_DISPLAY = {
+    "aː": "ā", "iː": "ī", "uː": "ū",
+    "a": "a", "i": "i", "u": "u",
+};
+
+// Resolve a phoneme to its Abwugida codepoints. Most are direct ABWUGIDA_MAP
+// entries; consonants carrying a secondary-articulation modifier (e.g. sˤ, kʷ)
+// are derived by peeling the modifier letter(s) off and appending their fixed
+// accessory codepoint to the base consonant's glyph.
+function phonemeToCps(phoneme) {
+    if (phoneme in ABWUGIDA_MAP) {
+        return ABWUGIDA_MAP[phoneme];
+    }
+    let base = phoneme;
+    let suffix = "";
+    while (base.length > 1 && base[base.length - 1] in ABWUGIDA_MODIFIERS) {
+        suffix = ABWUGIDA_MODIFIERS[base[base.length - 1]] + suffix;
+        base = base.slice(0, -1);
+    }
+    return base in ABWUGIDA_MAP ? ABWUGIDA_MAP[base] + suffix : undefined;
+}
+
 
 class Consonant {
     constructor(consonant, vowel) {
@@ -98,22 +122,7 @@ class Consonant {
     }
 
     vowelToString() {
-        switch (this.vowel) {
-            case "aː":
-                return "aː";
-            case "uː":
-                return "uː";
-            case "iː":
-                return "iː";
-            case "a":
-                return "ə";
-            case "i":
-                return "i";
-            case "u":
-                return "u";
-            default:
-                return "";
-        }
+        return VOWEL_DISPLAY[this.vowel] || "";
     }
 
 
@@ -152,9 +161,9 @@ class Consonant {
         if (consonant == "blank") {
             consonant = "blank_forward";
         }
-        let cps = ABWUGIDA_MAP[consonant];
+        let cps = phonemeToCps(consonant);
         if (this.vowel) {
-            return cps + ABWUGIDA_MAP[this.vowel];
+            return cps + phonemeToCps(this.vowel);
         } else {
             return cps;
         }
@@ -237,6 +246,10 @@ class Parser {
                case "i":
                case "ɪ":
                case "e":
+                    // /oʊ/ is really just perceived as /o:/ by most. Including by Alice.
+                    if (next == "ɪ") {
+                        this.index++;
+                    }         
                case "ɛ":
                    this.vowel = "iː";
                    break;
@@ -665,9 +678,9 @@ function splitJyutpingVowels(s) {
 }
 
 // Display form of a vowel phoneme for the "Parsed" output (matches
-// Consonant.vowelToString: short a is rendered as schwa).
+// Consonant.vowelToString: long vowels take a macron).
 function jyutpingVowelDisplay(v) {
-    return v === "a" ? "ə" : v;
+    return VOWEL_DISPLAY[v] || v;
 }
 
 function cantoneseToDetails(text) {
@@ -731,6 +744,85 @@ function cantoneseToDetails(text) {
         if (codaString) parts.push(codaString);
         output.string += parts.join("-");
     }
+    return output;
+}
+
+// === DIRECT IPA INPUT MODE ===
+// Lets you type IPA directly. Each vowel is collapsed to one of three Abwugida
+// qualities (a / i / u); a following length mark (ː) selects the long variant,
+// giving the six vowels a aː i iː u uː. Consonants reuse the CONSONANTS list
+// (greedy longest match, so digraphs like tʃ/dʒ and modified letters work).
+
+// IPA vowel → Abwugida vowel quality. Length comes separately from a trailing ː.
+const IPA_VOWEL_QUALITY = {
+    // front (unrounded & rounded) → i
+    "i": "i", "ɪ": "i", "e": "i", "ɛ": "i", "y": "i", "ø": "i", "œ": "i",
+    // low / central → a  (æ stays a-quality, matching English mode's "cat" = kaː-t)
+    "æ": "a", "a": "a", "ɑ": "a", "ä": "a", "ɐ": "a", "ʌ": "a", "ə": "a",
+    "ɜ": "a", "ɚ": "a", "ɝ": "a",
+    // back rounded → u
+    "u": "u", "ʊ": "u", "o": "u", "ɔ": "u", "ɒ": "u", "ɤ": "u", "ɵ": "u",
+};
+
+function tokenizeIPA(text) {
+    text = text.replace(/ɹ/g, "r"); // English r is usually written ɹ
+    const tokens = [];
+    // Longest first so multi-char consonants (tʃ, dʒ, tˤ, kʷ, …) win over their
+    // leading single character.
+    const consonantsByLen = [...CONSONANTS].sort((a, b) => b.length - a.length);
+    let i = 0;
+    while (i < text.length) {
+        const ch = text[i];
+
+        // Stress marks carry no glyph and don't affect this syllable model.
+        if (ch === "ˈ" || ch === "ˌ") { i++; continue; }
+
+        const cons = consonantsByLen.find((c) => text.startsWith(c, i));
+        if (cons) {
+            tokens.push({ type: "consonant", phoneme: cons });
+            i += cons.length;
+            continue;
+        }
+
+        const quality = IPA_VOWEL_QUALITY[ch];
+        if (quality) {
+            i++;
+            let phoneme = quality;
+            if (text[i] === "ː" || text[i] === "ˑ") { phoneme = quality + "ː"; i++; }
+            tokens.push({ type: "vowel", phoneme });
+            continue;
+        }
+
+        tokens.push({ type: "special", char: ch });
+        i++;
+    }
+    return tokens;
+}
+
+function ipaToDetails(text) {
+    TripleOutput.AFTER_WHITESPACE = true;
+    const allTokens = tokenizeIPA(text);
+    const output = new TripleOutput("", "", "", "");
+    let buffer = [];
+
+    function flushBuffer() {
+        if (!buffer.length) return;
+        const consonants = arabiziTokensToConsonants(buffer);
+        output.string += consonants.map((c) => c.toString()).join("-");
+        output.ipa += buffer.map((t) => t.phoneme).join("");
+        output.cps += consonants.map((c) => c.toCPs()).join("");
+        buffer = [];
+    }
+
+    for (const tok of allTokens) {
+        if (tok.type === "special") {
+            flushBuffer();
+            output.push(TripleOutput.forSpecialChar(tok.char));
+        } else {
+            buffer.push(tok);
+        }
+    }
+    flushBuffer();
     return output;
 }
 
