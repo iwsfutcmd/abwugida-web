@@ -1,32 +1,21 @@
+// Derived from ABWUGIDA_MAP so it's never out of sync with the glyph table.
+// A map entry is a consonant when its glyph is a carrier (voiceless E200 /
+// voiced E201) followed by a consonant body — i.e. longer than the bare
+// carrier, which is all the "blank_*" entries are. Vowels (\uE1xx) and tones
+// (\uE12x) use other ranges and are excluded.
+const BASE_CONSONANTS = Object.keys(ABWUGIDA_MAP).filter((phoneme) => {
+    const glyph = ABWUGIDA_MAP[phoneme];
+    return glyph.length > 1 && (glyph[0] === "\uE200" || glyph[0] === "\uE201");
+});
+
+// Secondary-articulation forms (tˤ, kʷ, …) aren't stored in the map; phonemeToCps
+// derives them by peeling a trailing modifier letter. Generate those phonemes here
+// from the same modifier table so the tokenizer recognizes every base + modifier.
 const CONSONANTS = [
-    "b",
-    "d",
-    "ð",
-    "dʒ",
-    "f",
-    "g",
-    "h",
-    "k",
-    "l",
-    "m",
-    "n",
-    "ŋ",
-    "p",
-    "r",
-    "s",
-    "ʃ",
-    "tʃ",
-    "t",
-    "v",
-    "w",
-    "j",
-    "z",
-    "ʒ",
-    "θ",
-    // Arabic consonants (for Arabizi mode)
-    "ʔ", "q", "ħ", "ʕ", "x", "ɣ", "tˤ", "dˤ", "sˤ", "zˤ", "ðˤ", "ɫ",
-    // Other consonants used by additional input modes
-    "ɲ", "ɥ", "kʷ", "gʷ",
+    ...BASE_CONSONANTS,
+    ...BASE_CONSONANTS.flatMap((base) =>
+        Object.keys(ABWUGIDA_MODIFIERS).map((modifier) => base + modifier)
+    ),
 ];
 
 const VOICELESS_CONSONANTS = [

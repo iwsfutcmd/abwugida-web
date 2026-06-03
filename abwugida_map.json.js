@@ -23,13 +23,23 @@ const ABWUGIDA_MAP = {
     "ħ": "\uE200\uE30B",
     "ʕ": "\uE201\uE30B",
     "h": "\uE200\uE30C",
+    "ɦ": "\uE201\uE30C",
+    "m̥": "\uE200\uE30D",
     "m": "\uE201\uE30D",
+    "n̥": "\uE200\uE30E",
     "n": "\uE201\uE30E",
+    "ɲ̥": "\uE200\uE30F",
     "ɲ": "\uE201\uE30F",
+    "ŋ̥": "\uE200\uE310",
     "ŋ": "\uE201\uE310",
+    "r̥": "\uE200\uE311",
     "r": "\uE201\uE311",
+    "l̥": "\uE200\uE312",
     "l": "\uE201\uE312",
+    "ʍ": "\uE200\uE313",
+    "w̥": "\uE200\uE313",
     "w": "\uE201\uE313",
+    "j̥": "\uE200\uE314",
     "j": "\uE201\uE314",
     // ɫ (velarized l) and ɥ are distinct glyphs, not base+modifier derivations.
     // Modifier consonants (tˤ, sˤ, kʷ, …) derive via ABWUGIDA_MODIFIERS below.
@@ -56,5 +66,7 @@ const ABWUGIDA_MAP = {
 // phoneme always maps to a fixed accessory codepoint (applied by phonemeToCps).
 const ABWUGIDA_MODIFIERS = {
     "ˤ": "\uE316", // ˤ  emphatic / pharyngealized
-    "ʷ": "\uE313", // ʷ  labialized
+    "ʷ": "\uE313", // ʷ  labialized          (reuses the w body \uE313)
+    "ʲ": "\uE314", // ʲ  palatalized         (reuses the j body \uE314)
+    "ᶣ": "\uE315", // ᶣ  labial-palatalized  (reuses the ɥ body \uE315)
 };
