@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>Abwugida</title>
     <script src="./cmu.json.js"></script>
     <script src="./alice_dict.json.js"></script>
     <script src="./abwugida_map.json.js"></script>
@@ -41,11 +42,9 @@
           [...document.getElementsByClassName("abwugida")].forEach(
             (e) => (e.innerHTML = details.cps)
           );
-          const ct = document.getElementById("circle-text");
-          if (ct) ct.innerHTML = details.cps + " ";
-          fitCircleText();
         } catch (e) {
-          output.innerHTML = `<span class=unknown>Got error: ${e}</span>`;
+          document.getElementById("display").innerHTML =
+            `<span class="unknown">Got error: ${e}</span>`;
         }
       }
 
@@ -54,61 +53,13 @@
         [...document.getElementsByClassName("abwugida")].forEach(
           (e) => (e.style.fontSize = fontSize)
         );
-        fitCircleText();
       }
 
-      async function downloadCircleSVG() {
-        const svg = document.getElementById("circle-svg");
-
-        // Fetch font and encode as base64
-        const fontResp = await fetch("font/Abwugida-Regular.ttf");
-        const fontBuf = await fontResp.arrayBuffer();
-        const bytes = new Uint8Array(fontBuf);
-        let binary = "";
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-        const fontB64 = btoa(binary);
-
-        // Compute viewBox from circle geometry + font size.
-        // Baseline sits on the circle (r=340, center 400,400); glyphs extend
-        // up to ~1 font-size outward from the baseline in any direction.
-        const tspan = document.getElementById("circle-text");
-        const fsPx = parseFloat(window.getComputedStyle(tspan).fontSize) || 80;
-        const svgDisplayWidth = svg.getBoundingClientRect().width || 600;
-        const fsSVG = fsPx * 800 / svgDisplayWidth;
-        const pad = Math.ceil(fsSVG * 2) + 10;
-        const cx = 400, cy = 400, r = 340;
-        const vx = cx - r - pad, vy = cy - r - pad, vsize = (r + pad) * 2;
-
-        const clone = svg.cloneNode(true);
-        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-        clone.setAttribute("viewBox", `${vx} ${vy} ${vsize} ${vsize}`);
-        clone.setAttribute("width", vsize);
-        clone.setAttribute("height", vsize);
-        clone.setAttribute("overflow", "visible");
-        clone.removeAttribute("style");
-
-        // Embed font + class styles so the SVG is self-contained
-        const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
-        style.textContent = `
-          @font-face { font-family: "Abwugida"; src: url("data:font/truetype;base64,${fontB64}"); font-weight: 400; }
-          .abwugida { font-family: "Abwugida"; }
-          .regular { font-weight: 400; }
-        `;
-        clone.insertBefore(style, clone.firstChild);
-
-        const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" });
-        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "abwugida-circle.svg" });
-        a.click();
-        URL.revokeObjectURL(a.href);
-      }
-
-      function fitCircleText() {
-        const tspan = document.getElementById("circle-text");
-        if (!tspan || !tspan.textContent) return;
-        const len = tspan.getComputedTextLength();
-        if (!len) return;
-        const currentSize = parseFloat(window.getComputedStyle(tspan).fontSize);
-        tspan.style.fontSize = (currentSize * 2 * Math.PI * 340 / len) + "px";
+      function setWeight() {
+        const weight = document.getElementById("weight").value;
+        [...document.getElementsByClassName("abwugida")].forEach(
+          (e) => (e.style.fontWeight = weight)
+        );
       }
 
       let CHARMAP = {};
@@ -170,7 +121,6 @@
         textarea.setSelectionRange(pos, pos);
         update();
       }
-
 
       function buildClicker() {
         const carrierCh = ABWUGIDA_MAP["blank_forward"];
@@ -260,114 +210,247 @@
         src: url("font/Abwugida-Regular.ttf");
         font-weight: 400;
       }
-
       @font-face {
         font-family: "Abwugida";
         src: url("font/Abwugida-Thin.ttf");
         font-weight: 100;
       }
-
       @font-face {
         font-family: "Abwugida";
         src: url("font/Abwugida-Bold.ttf");
         font-weight: 700;
       }
-      body {
-        display: flex;
-        flex-direction: column;
+
+      /* ---- Theme tokens ---- */
+      :root {
+        --bg: #f4f4f6;
+        --surface: #ffffff;
+        --surface-2: #f0f0f3;
+        --text: #1b1b1f;
+        --muted: #6a6a73;
+        --border: #e1e1e7;
+        --accent: #5046e5;
+        --accent-text: #ffffff;
+        --danger: #d23b3b;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.06);
+        --radius: 14px;
+        --radius-sm: 9px;
+        --ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
       }
-      header {
-        display: flex;
-        justify-content: space-between;
-      }
-      .help {
-        position: absolute;
-        background-color: white;
-        border: 1px black solid;
-        inset-inline-start: 0px;
-      }
-      #text {
-        inline-size: 100%;
+      * {
         box-sizing: border-box;
       }
-      .abwugida {
-        font-family: "Abwugida";
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--ui);
+        line-height: 1.5;
+        min-height: 100dvh;
       }
 
-      .regular {
-        font-weight: 400;
+      .app {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: max(env(safe-area-inset-top), 16px) 16px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      /* Keep flex children from forcing horizontal overflow on narrow screens */
+      .app > * {
+        min-width: 0;
       }
 
-      .thin {
-        font-weight: 100;
+      /* ---- Top bar ---- */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
       }
-
-      .bold {
+      .topbar h1 {
+        font-size: 1.25rem;
         font-weight: 700;
+        letter-spacing: -0.01em;
+        margin: 0;
+      }
+      .icon-btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        font-size: 1.25rem;
+        line-height: 1;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      }
+      .icon-btn:hover {
+        background: var(--surface-2);
+        border-color: var(--accent);
+      }
+      .icon-btn:active {
+        transform: scale(0.94);
       }
 
-      /* Most content boxes have something inside them that needs to be positioned */
-      .unknown {
-        height: 1em;
-        display: inline-block;
-        position: relative;
-        top: 0;
-        left: 0;
-        margin-bottom: 0.2em;
-        vertical-align: middle;
+      /* ---- Mode segmented control ---- */
+      .modes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+        gap: 6px;
+        padding: 5px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
       }
-      .unknown {
-        color: red;
-        width: fit-content;
+      .seg {
+        text-align: center;
+        padding: 9px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+        white-space: nowrap;
+        user-select: none;
+        transition: background 0.15s, color 0.15s;
       }
-      #outputbox summary {
-        font-size: 12pt;
+      .seg input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
       }
-      #output {
-        margin-top: 0.07em; /* bare minimum from fatha/dommah/schwa positioning */
-        margin-bottom: 0.05em; /* bare minimum from kasrah positioning = 0.75 + 0.3 - 1 */
-        box-decoration-break: slice;
+      .seg:hover {
+        color: var(--text);
+      }
+      .seg:has(input:checked) {
+        background: var(--surface);
+        color: var(--accent);
+        box-shadow: var(--shadow);
+      }
+      .seg:has(input:focus-visible) {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* ---- Output card ---- */
+      /* Output stays on white in both themes — the glyph font is drawn for
+         black-on-paper, so the surface and ink colors are pinned regardless
+         of the light/dark UI around it. */
+      .output-card {
+        background: #ffffff;
+        color: #1b1b1f;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 18px 20px;
+        min-height: 140px;
+        display: flex;
+        align-items: center;
+        overflow-x: auto;
       }
       #display {
-        padding: 0.4em 0.3em;
+        font-family: "Abwugida";
+        font-weight: 400;
+        width: 100%;
+        overflow-wrap: break-word;
+        white-space: pre-wrap;
       }
-      #clicker {
-        margin: 0.5em 0;
+      #display:empty::before {
+        content: "Output appears here";
+        font-family: var(--ui);
+        font-size: 0.95rem;
+        font-weight: 400;
+        color: #8a8a93;
+      }
+      .unknown {
+        color: var(--danger);
+        font-family: var(--ui);
+        font-size: 1rem;
+      }
+
+      /* ---- Input ---- */
+      .input-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      #text {
+        width: 100%;
+        resize: vertical;
+        font-family: var(--ui);
+        font-size: 1rem; /* >=16px keeps iOS from zooming on focus */
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: var(--shadow);
+        min-height: 84px;
+      }
+      #text:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      /* ---- Glyph clicker (Glyphs mode) ---- */
+      #clicker-section {
+        margin-top: 4px;
       }
       .clicker-heading {
-        font-weight: bold;
-        margin-top: 0.5em;
-        font-size: 11pt;
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin: 14px 0 6px;
       }
       .clicker-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin: 4px 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+        gap: 6px;
       }
       .clicker-btn {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: space-between;
-        padding: 4px 6px;
-        min-width: 44px;
+        gap: 4px;
+        padding: 8px 4px 6px;
+        min-height: 56px;
         cursor: pointer;
-        background: white;
-        border: 1px solid #ccc;
-        border-radius: 3px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        transition: background 0.12s, border-color 0.12s, transform 0.08s;
       }
       .clicker-btn:hover {
-        background: #eef;
-        border-color: #88a;
+        background: var(--surface-2);
+        border-color: var(--accent);
       }
       .clicker-btn:active {
-        background: #dde;
+        transform: scale(0.95);
       }
       .clicker-glyph {
         font-family: "Abwugida";
         font-weight: 400;
-        font-size: 28px;
+        font-size: 30px;
         line-height: 1;
       }
       .clicker-carrier {
@@ -375,128 +458,277 @@
       }
       .clicker-label {
         font-size: 10px;
-        color: #555;
-        margin-top: 3px;
-        font-family: sans-serif;
+        color: var(--muted);
+      }
+
+      /* ---- Options drawer ---- */
+      .scrim {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+        z-index: 20;
+      }
+      .scrim.open {
+        opacity: 1;
+        visibility: visible;
+      }
+      .drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100dvh;
+        width: min(86vw, 360px);
+        background: var(--surface);
+        border-left: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+        z-index: 30;
+        display: flex;
+        flex-direction: column;
+        padding: max(env(safe-area-inset-top), 16px) 0 0;
+      }
+      .drawer.open {
+        transform: translateX(0);
+      }
+      .drawer-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .drawer-head h2 {
+        font-size: 1.05rem;
+        margin: 0;
+      }
+      .drawer-body {
+        padding: 16px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .opt-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .opt-group > .opt-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .opt-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .opt-row label {
+        font-size: 0.92rem;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      #fontsize,
+      #weight {
+        font-family: var(--ui);
+        font-size: 1rem;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--surface);
+        color: var(--text);
+      }
+      #fontsize {
+        width: 90px;
+      }
+      .readout {
+        font-size: 0.9rem;
+        word-break: break-word;
+      }
+      .readout .label {
+        color: var(--muted);
+        margin-right: 4px;
+      }
+      .btn {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px 14px;
+        font-family: var(--ui);
+        font-size: 0.92rem;
+        font-weight: 600;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.12s, border-color 0.12s;
+      }
+      .btn:hover {
+        background: var(--surface-2);
+        border-color: var(--accent);
+      }
+      .btn-accent {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+      .btn-accent:hover {
+        background: var(--accent);
+        filter: brightness(1.08);
+      }
+      .opt-links {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
     </style>
   </head>
   <body>
-    <header>
-      <a class="download-button" href="font/Abwugida-Regular.ttf" download>
-        <button>Download Font</button>
-      </a>
-      <a href="grid.html"><button>Carrier × Accessory grid</button></a>
-    </header>
-    <div id="display" class="abwugida"></div>
-    <div id="form">
-      <label>Mode: </label>
-      <label><input type="radio" name="mode" value="english" checked onchange="update()"> English</label>
-      <label><input type="radio" name="mode" value="ipa" onchange="update()"> IPA</label>
-      <label><input type="radio" name="mode" value="arabizi" onchange="update()"> Arabizi (Lebanese)</label>
-      <label><input type="radio" name="mode" value="cantonese" onchange="update()"> Cantonese (Jyutping)</label>
-      <label><input type="radio" name="mode" value="glyphs" onchange="update()"> Glyphs</label>
-      <br /><br />
-      <label for="text">Text: </label><br /><textarea
-        id="text"
-        name="text"
-        rows="3"
-        cols="70"
-        onkeyup="update()"
-      ></textarea
-      ><br />
-      <div id="clicker-section" style="display: none">
-        <div id="clicker"></div>
-      </div>
-      <label for="fontsize">Set font size (px): </label>
-      <input
-        type="number"
-        name="fontsize"
-        id="fontsize"
-        value="80"
-        onchange="setFontSize()"
-      /><br />
+    <div class="app">
+      <header class="topbar">
+        <h1>Abwugida</h1>
+        <button
+          type="button"
+          id="options-toggle"
+          class="icon-btn"
+          aria-label="Open options"
+          aria-haspopup="dialog"
+        >
+          ⚙
+        </button>
+      </header>
 
-      <div id="phonetic-output">
-        IPA: <span id="ipa-output"></span><br />
-        Parsed: <span id="string-output"></span><br />
+      <div class="modes" role="radiogroup" aria-label="Input mode">
+        <label class="seg"
+          ><input type="radio" name="mode" value="english" checked onchange="update()" />English</label
+        >
+        <label class="seg"
+          ><input type="radio" name="mode" value="ipa" onchange="update()" />IPA</label
+        >
+        <label class="seg" title="Arabizi (Lebanese)"
+          ><input type="radio" name="mode" value="arabizi" onchange="update()" />Arabizi</label
+        >
+        <label class="seg" title="Cantonese (Jyutping)"
+          ><input type="radio" name="mode" value="cantonese" onchange="update()" />Cantonese</label
+        >
+        <label class="seg"
+          ><input type="radio" name="mode" value="glyphs" onchange="update()" />Glyphs</label
+        >
       </div>
-      <button onclick="document.getElementById('form').style.display = 'none'">
-        Hide controls (for printing)
-      </button>
 
-      <br /><br /><br />
+      <section class="output-card" aria-label="Output">
+        <div id="display" class="abwugida"></div>
+      </section>
+
+      <div class="input-wrap">
+        <label class="field-label" for="text">Input</label>
+        <textarea id="text" name="text" rows="3" onkeyup="update()"></textarea>
+        <div id="clicker-section" style="display: none">
+          <div id="clicker"></div>
+        </div>
+      </div>
     </div>
-    <details>
-      <summary>~~</summary>
-      <svg
-        width="800"
-        height="400"
-        viewBox="0 0 800 200"
-        xmlns="http://www.w3.org/2000/svg"
-        style="inline-size: 100%"
-      >
-        <!-- Define the sine wave path -->
-        <path
-          id="sineWave"
-          d="M0 100 Q 100 0 200 100 T 400 100 T 600 100 T 800 100"
-          fill="transparent"
-          stroke="black"
-        />
 
-        <!-- Create the text element and place it on the path -->
-        <text font-size="16">
-          <textPath href="#sineWave" id="textPath">
-            <tspan class="abwugida regular" />
-            &nbsp;
-          </textPath>
-          <animate
-            xlink:href="#textPath"
-            attributeName="startOffset"
-            from="-100%"
-            to="100%"
-            dur="10s"
-            repeatCount="indefinite"
-          />
-        </text>
-      </svg>
-    </details>
-    <details ontoggle="fitCircleText()">
-      <summary>○</summary>
-      <button onclick="downloadCircleSVG()">Download SVG</button>
-      <svg
-        id="circle-svg"
-        viewBox="0 0 800 800"
-        xmlns="http://www.w3.org/2000/svg"
-        style="max-width: 600px; width: 100%; display: block; margin: auto"
-        overflow="visible"
-      >
-        <defs>
-          <!-- Circle path starting at 12 o'clock, going clockwise in four quarter-arcs -->
-          <path id="circlePath" d="M 400,60 a 340,340 0 0,1 340,340 a 340,340 0 0,1 -340,340 a 340,340 0 0,1 -340,-340 a 340,340 0 0,1 340,-340" />
-        </defs>
-        <circle cx="400" cy="400" r="340" fill="none" stroke="#ccc" stroke-width="2" />
-        <text>
-          <textPath href="#circlePath">
-            <tspan class="abwugida regular" id="circle-text" />
-          </textPath>
-        </text>
-      </svg>
-    </details>
-    <details>
-      <summary>thin</summary>
-      <div class="abwugida thin"></div>
-    </details>
-    <details>
-      <summary>bold</summary>
-      <div class="abwugida bold"></div>
-    </details>
+    <!-- Options drawer -->
+    <div class="scrim" id="drawer-scrim"></div>
+    <aside
+      class="drawer"
+      id="drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Options"
+      aria-hidden="true"
+    >
+      <div class="drawer-head">
+        <h2>Options</h2>
+        <button type="button" id="drawer-close" class="icon-btn" aria-label="Close options">
+          ✕
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div class="opt-group">
+          <span class="opt-title">Display</span>
+          <div class="opt-row">
+            <label for="fontsize">Font size</label>
+            <input
+              type="number"
+              name="fontsize"
+              id="fontsize"
+              value="80"
+              min="8"
+              onchange="setFontSize()"
+            />
+            <span class="muted">px</span>
+          </div>
+          <div class="opt-row">
+            <label for="weight">Weight</label>
+            <select id="weight" onchange="setWeight()">
+              <option value="100">Thin</option>
+              <option value="400" selected>Regular</option>
+              <option value="700">Bold</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="opt-group" id="phonetic-output">
+          <span class="opt-title">Phonetic breakdown</span>
+          <div class="readout"><span class="label">IPA:</span><span id="ipa-output"></span></div>
+          <div class="readout"><span class="label">Parsed:</span><span id="string-output"></span></div>
+        </div>
+
+        <div class="opt-group">
+          <span class="opt-title">Resources</span>
+          <div class="opt-links">
+            <a class="btn btn-accent" href="font/Abwugida-Regular.ttf" download>
+              Download font
+            </a>
+            <a class="btn" href="grid.html">Carrier × Accessory grid</a>
+          </div>
+        </div>
+      </div>
+    </aside>
 
     <script type="text/javascript">
       buildClicker();
       document.getElementById("text").addEventListener("keydown", glyphsKeydown);
+
+      // Options drawer
+      (function () {
+        const drawer = document.getElementById("drawer");
+        const scrim = document.getElementById("drawer-scrim");
+        const open = () => {
+          drawer.classList.add("open");
+          scrim.classList.add("open");
+          drawer.setAttribute("aria-hidden", "false");
+        };
+        const close = () => {
+          drawer.classList.remove("open");
+          scrim.classList.remove("open");
+          drawer.setAttribute("aria-hidden", "true");
+        };
+        document.getElementById("options-toggle").addEventListener("click", open);
+        document.getElementById("drawer-close").addEventListener("click", close);
+        scrim.addEventListener("click", close);
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") close();
+        });
+      })();
+
       update();
       setFontSize();
+      setWeight();
     </script>
   </body>
 </html>
