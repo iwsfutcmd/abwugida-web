@@ -274,9 +274,16 @@
         let displayed = "";
         const dispToRaw = [];
         for (let i = 0; i < lines.length; i++) {
-          for (const ch of lines[i]) {
-            displayed += ch;
-            dispToRaw.push(rawPos);
+          // Hide the hanging break-space (so right/center alignment is flush)
+          // while still advancing rawPos past it to keep the map aligned.
+          const chars = [...lines[i]];
+          let visEnd = chars.length;
+          while (visEnd > 0 && /\s/.test(chars[visEnd - 1])) visEnd--;
+          for (let k = 0; k < chars.length; k++) {
+            if (k < visEnd) {
+              displayed += chars[k];
+              dispToRaw.push(rawPos);
+            }
             rawPos++;
           }
           if (i < lines.length - 1) {
@@ -1435,10 +1442,13 @@
           const perLine = [];
           let maxW = 0;
           lines.forEach((line, li) => {
-            if (!line) return;
+            // Drop the hanging break-space so the line's width is just its
+            // visible glyphs — otherwise right/center alignment isn't flush.
+            const lineStr = line.replace(/\s+$/u, "");
+            if (!lineStr) return;
             const baseY = -li * lineHeight;
             const buffer = new lib.Buffer();
-            buffer.addText(line.normalize("NFD"));
+            buffer.addText(lineStr.normalize("NFD"));
             buffer.guessSegmentProperties();
             lib.shape(font, buffer);
             let ax = 0;
