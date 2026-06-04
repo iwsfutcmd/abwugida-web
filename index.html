@@ -368,6 +368,13 @@
         if (window.rerenderExportPreview) window.rerenderExportPreview();
       }
 
+      function swapArea() {
+        const w = document.getElementById("area-w");
+        const h = document.getElementById("area-h");
+        [w.value, h.value] = [h.value, w.value];
+        setArea();
+      }
+
       function restoreArea() {
         try {
           const saved = JSON.parse(localStorage.getItem(AREA_KEY) || "null");
@@ -976,7 +983,10 @@
       #lineheight,
       #weight,
       #align,
-      #palette {
+      #palette,
+      #area-w,
+      #area-h,
+      #area-dpi {
         font-family: var(--ui);
         font-size: 1rem;
         padding: 8px 10px;
@@ -988,6 +998,27 @@
       #fontsize,
       #lineheight {
         width: 90px;
+      }
+      #area-w,
+      #area-h {
+        width: 70px;
+      }
+      #area-dpi {
+        width: 90px;
+      }
+      .mini-btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: var(--radius-sm);
+        padding: 7px 10px;
+        font-size: 1rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .mini-btn:hover {
+        border-color: var(--accent);
       }
       .readout {
         font-size: 0.9rem;
@@ -1335,9 +1366,17 @@
               min="1"
               step="0.1"
               oninput="setArea()"
-              style="width: 5em"
             />
-            <span class="muted">×</span>
+            <button
+              type="button"
+              class="mini-btn"
+              id="area-swap"
+              onclick="swapArea()"
+              title="Swap width and height"
+              aria-label="Swap width and height"
+            >
+              ⇄
+            </button>
             <input
               type="number"
               id="area-h"
@@ -1345,7 +1384,6 @@
               min="1"
               step="0.1"
               oninput="setArea()"
-              style="width: 5em"
             />
             <span class="muted">mm</span>
           </div>
@@ -1412,6 +1450,7 @@
           ></svg>
         </div>
         <div class="export-bar">
+          <span class="muted" id="export-size-info"></span>
           <div class="export-actions">
             <button type="button" class="btn" id="export-svg-btn" disabled>
               SVG
@@ -1489,6 +1528,7 @@
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
         const statusEl = document.getElementById("export-status");
+        const sizeInfoEl = document.getElementById("export-size-info");
         const layersEl = document.getElementById("export-layers");
         const layersSvgBtn = document.getElementById("export-layers-svg-btn");
         const layersPngBtn = document.getElementById("export-layers-png-btn");
@@ -1761,6 +1801,8 @@
             if (!svgString) {
               svgEl.replaceChildren();
               svgEl.setAttribute("viewBox", DEFAULT_VIEWBOX);
+              svgEl.classList.remove("has-label");
+              sizeInfoEl.textContent = "";
               setStatus(
                 document.getElementById("display").textContent
                   ? "Nothing to render."
@@ -1791,6 +1833,11 @@
             svgEl.setAttribute("viewBox", finalVB);
             svgEl.classList.toggle("has-label", area.active);
             svgEl.replaceChildren(...children);
+            const [, , fvw, fvh] = finalVB.split(/\s+/).map(Number);
+            const { w: pxw, h: pxh } = pngTargetSize(fvw, fvh);
+            sizeInfoEl.textContent = area.active
+              ? `${area.wmm} × ${area.hmm} mm · ${area.dpi} dpi · ${pxw} × ${pxh} px`
+              : `auto · ${pxw} × ${pxh} px`;
             setEnabled(true);
             setStatus("");
             const colorFill = (() => {
