@@ -1152,6 +1152,22 @@
         color: var(--muted);
         min-height: 1.1em;
       }
+      .export-layers {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      .layer-swatch {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        border: 1px solid var(--border);
+        flex-shrink: 0;
+      }
     </style>
   </head>
   <body>
@@ -1359,6 +1375,17 @@
             </button>
           </div>
         </div>
+        <div class="export-layers" id="export-layers" hidden>
+          <span class="muted">Layers</span>
+          <div class="export-actions">
+            <span class="layer-swatch" style="background:#000"></span>
+            <button type="button" class="btn" id="export-black-svg-btn" disabled>SVG</button>
+            <button type="button" class="btn btn-accent" id="export-black-png-btn" disabled>PNG</button>
+            <span class="layer-swatch" id="export-color-swatch"></span>
+            <button type="button" class="btn" id="export-color-svg-btn" disabled>SVG</button>
+            <button type="button" class="btn btn-accent" id="export-color-png-btn" disabled>PNG</button>
+          </div>
+        </div>
         <div class="export-status" id="export-status"></div>
       </div>
     </div>
@@ -1421,6 +1448,12 @@
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
         const statusEl = document.getElementById("export-status");
+        const layersEl = document.getElementById("export-layers");
+        const blackSvgBtn = document.getElementById("export-black-svg-btn");
+        const blackPngBtn = document.getElementById("export-black-png-btn");
+        const colorSvgBtn = document.getElementById("export-color-svg-btn");
+        const colorPngBtn = document.getElementById("export-color-png-btn");
+        const colorSwatch = document.getElementById("export-color-swatch");
 
         let hb = null; // the loaded module
         const fontCache = {}; // weight -> hb.Font
@@ -1432,6 +1465,35 @@
         function setEnabled(on) {
           svgBtn.disabled = !on;
           pngBtn.disabled = !on;
+          if (!on) {
+            blackSvgBtn.disabled = true;
+            blackPngBtn.disabled = true;
+            colorSvgBtn.disabled = true;
+            colorPngBtn.disabled = true;
+            layersEl.hidden = true;
+          }
+        }
+
+        function isBlack(fill) {
+          const f = (fill || "").trim().toLowerCase();
+          return f === "#000000" || f === "#000" || f === "black" || f === "rgb(0,0,0)";
+        }
+
+        function filterSvgLayer(keepBlack) {
+          const clone = svgEl.cloneNode(true);
+          for (const el of clone.querySelectorAll('[data-role="background"]')) el.remove();
+          function prune(el) {
+            const fill = el.getAttribute("fill");
+            if (fill && fill !== "none" && !fill.startsWith("url(")) {
+              if (isBlack(fill) !== keepBlack) { el.remove(); return; }
+            }
+            for (const child of [...el.children]) prune(child);
+            if (el.tagName === "g" && !el.children.length) el.remove();
+          }
+          for (const child of [...clone.children]) {
+            if (child.tagName.toLowerCase() !== "defs") prune(child);
+          }
+          return clone;
         }
 
         async function ensureHb() {
@@ -1624,12 +1686,28 @@
               rect.setAttribute("width", bw);
               rect.setAttribute("height", bh);
               rect.setAttribute("fill", bgColor.value);
+              rect.setAttribute("data-role", "background");
               children.unshift(rect);
             }
             svgEl.setAttribute("viewBox", viewBox);
             svgEl.replaceChildren(...children);
             setEnabled(true);
             setStatus("");
+            const colorFill = (() => {
+              for (const el of svgEl.querySelectorAll("[fill]")) {
+                const f = (el.getAttribute("fill") || "").trim();
+                if (f && f !== "none" && !f.startsWith("url(") && !isBlack(f)) return f;
+              }
+              return null;
+            })();
+            if (colorFill) {
+              colorSwatch.style.background = colorFill;
+              layersEl.hidden = false;
+              blackSvgBtn.disabled = false;
+              blackPngBtn.disabled = false;
+              colorSvgBtn.disabled = false;
+              colorPngBtn.disabled = false;
+            }
           } catch (e) {
             console.error("Export render error:", e);
             if (mine === seq) setStatus("Render failed: " + (e?.message || e));
@@ -1689,6 +1767,44 @@
           else setStatus("PNG export failed.");
         }
 
+        function downloadLayerSvg(keepBlack) {
+          const layerEl = filterSvgLayer(keepBlack);
+          triggerDownload(
+            new Blob([layerEl.outerHTML], { type: "image/svg+xml" }),
+            keepBlack ? "abwugida-black.svg" : "abwugida-color.svg"
+          );
+        }
+
+        async function downloadLayerPng(keepBlack) {
+          const viewBox = svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX;
+          const [,, vw, vh] = viewBox.split(/\s+/).map(Number);
+          if (!(vw > 0 && vh > 0)) { setStatus("PNG layer export failed."); return; }
+          const scale = PNG_MAX / Math.max(vw, vh);
+          const w = Math.max(1, Math.round(vw * scale));
+          const h = Math.max(1, Math.round(vh * scale));
+          const layerEl = filterSvgLayer(keepBlack);
+          layerEl.setAttribute("width", w);
+          layerEl.setAttribute("height", h);
+          const url = URL.createObjectURL(
+            new Blob([layerEl.outerHTML], { type: "image/svg+xml" })
+          );
+          let img;
+          try {
+            img = await loadImage(url);
+          } catch {
+            URL.revokeObjectURL(url);
+            setStatus("PNG layer export failed.");
+            return;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+          if (blob) triggerDownload(blob, keepBlack ? "abwugida-black.png" : "abwugida-color.png");
+          else setStatus("PNG layer export failed.");
+        }
 
         let openedAt = 0;
         const openModal = () => {
@@ -1718,6 +1834,10 @@
         });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
+        blackSvgBtn.addEventListener("click", () => downloadLayerSvg(true));
+        blackPngBtn.addEventListener("click", () => downloadLayerPng(true));
+        colorSvgBtn.addEventListener("click", () => downloadLayerSvg(false));
+        colorPngBtn.addEventListener("click", () => downloadLayerPng(false));
 
         // setBackground() (options drawer) calls this to refresh the preview
         // when the shared background setting changes while the modal is open.
