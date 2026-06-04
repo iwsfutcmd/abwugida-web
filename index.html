@@ -1146,7 +1146,6 @@
       .export-actions {
         display: flex;
         gap: 8px;
-        flex-wrap: wrap;
       }
       .export-status {
         font-size: 0.85rem;
@@ -1374,9 +1373,6 @@
             <button type="button" class="btn btn-accent" id="export-png-btn" disabled>
               PNG
             </button>
-            <button type="button" class="btn" id="export-pdf-btn" disabled>
-              PDF
-            </button>
           </div>
         </div>
         <div class="export-layers" id="export-layers" hidden>
@@ -1385,11 +1381,9 @@
             <span class="layer-swatch" style="background:#000"></span>
             <button type="button" class="btn" id="export-black-svg-btn" disabled>SVG</button>
             <button type="button" class="btn btn-accent" id="export-black-png-btn" disabled>PNG</button>
-            <button type="button" class="btn" id="export-black-pdf-btn" disabled>PDF</button>
             <span class="layer-swatch" id="export-color-swatch"></span>
             <button type="button" class="btn" id="export-color-svg-btn" disabled>SVG</button>
             <button type="button" class="btn btn-accent" id="export-color-png-btn" disabled>PNG</button>
-            <button type="button" class="btn" id="export-color-pdf-btn" disabled>PDF</button>
           </div>
         </div>
         <div class="export-status" id="export-status"></div>
@@ -1453,15 +1447,12 @@
         const bgColor = document.getElementById("bg-color");
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
-        const pdfBtn = document.getElementById("export-pdf-btn");
         const statusEl = document.getElementById("export-status");
         const layersEl = document.getElementById("export-layers");
         const blackSvgBtn = document.getElementById("export-black-svg-btn");
         const blackPngBtn = document.getElementById("export-black-png-btn");
-        const blackPdfBtn = document.getElementById("export-black-pdf-btn");
         const colorSvgBtn = document.getElementById("export-color-svg-btn");
         const colorPngBtn = document.getElementById("export-color-png-btn");
-        const colorPdfBtn = document.getElementById("export-color-pdf-btn");
         const colorSwatch = document.getElementById("export-color-swatch");
 
         let hb = null; // the loaded module
@@ -1474,14 +1465,11 @@
         function setEnabled(on) {
           svgBtn.disabled = !on;
           pngBtn.disabled = !on;
-          pdfBtn.disabled = !on;
           if (!on) {
             blackSvgBtn.disabled = true;
             blackPngBtn.disabled = true;
-            blackPdfBtn.disabled = true;
             colorSvgBtn.disabled = true;
             colorPngBtn.disabled = true;
-            colorPdfBtn.disabled = true;
             layersEl.hidden = true;
           }
         }
@@ -1717,10 +1705,8 @@
               layersEl.hidden = false;
               blackSvgBtn.disabled = false;
               blackPngBtn.disabled = false;
-              blackPdfBtn.disabled = false;
               colorSvgBtn.disabled = false;
               colorPngBtn.disabled = false;
-              colorPdfBtn.disabled = false;
             }
           } catch (e) {
             console.error("Export render error:", e);
@@ -1820,153 +1806,6 @@
           else setStatus("PNG layer export failed.");
         }
 
-        // PDF export keeps the glyphs as true vector paths (unlike PNG). The
-        // svg2pdf bundle (jsPDF + svg2pdf.js) is ~800KB, so it's lazy-loaded on
-        // first use rather than warmed up front like HarfBuzz.
-        const PDF_MODULE = "./vendor/svg2pdf/index.mjs";
-        let pdfLib = null;
-        async function ensurePdfLib() {
-          if (!pdfLib) pdfLib = await import(PDF_MODULE);
-          return pdfLib;
-        }
-
-        // HarfBuzz paints each COLR layer as a huge rect clipped to the glyph
-        // outline, where the <clipPath> holds a <use href="#glyphPath">. svg2pdf
-        // doesn't resolve <use> inside a clipPath, so it drops the clip and we
-        // get solid colored squares. Inline every <use> with a clone of its
-        // referent (carrying the use's own x/y/transform) so the clipPaths hold
-        // real <path>s that svg2pdf understands. Mutates `root` in place.
-        function inlineUses(root) {
-          for (let pass = 0; pass < 8; pass++) {
-            const uses = root.querySelectorAll("use");
-            if (!uses.length) break;
-            for (const use of uses) {
-              const href =
-                use.getAttribute("href") ||
-                use.getAttributeNS("http://www.w3.org/1999/xlink", "href");
-              const ref =
-                href && href.startsWith("#")
-                  ? root.querySelector("#" + CSS.escape(href.slice(1)))
-                  : null;
-              if (!ref) {
-                use.remove();
-                continue;
-              }
-              const clone = ref.cloneNode(true);
-              clone.removeAttribute("id");
-              const x = parseFloat(use.getAttribute("x") || "0");
-              const y = parseFloat(use.getAttribute("y") || "0");
-              const useT = use.getAttribute("transform") || "";
-              const shift = x || y ? `translate(${x},${y})` : "";
-              const transform = [useT, shift].filter(Boolean).join(" ");
-              if (transform) {
-                const g = document.createElementNS(SVG_NS, "g");
-                g.setAttribute("transform", transform);
-                g.appendChild(clone);
-                use.replaceWith(g);
-              } else {
-                use.replaceWith(clone);
-              }
-            }
-          }
-        }
-
-        // A clipPath whose only geometry is empty (e.g. the leading space /
-        // .notdef glyph, an empty-`d` path) clips its content entirely away in
-        // SVG. svg2pdf instead treats it as "no clip", so the layer's huge
-        // flood rect paints the whole page black. Drop anything that references
-        // such a clipPath. Run after inlineUses, so clipPaths hold real paths.
-        function pruneEmptyClips(root) {
-          const empties = new Set();
-          for (const cp of root.querySelectorAll("clipPath")) {
-            if (!cp.id) continue;
-            let hasGeometry = false;
-            for (const s of cp.querySelectorAll(
-              "path, rect, circle, ellipse, polygon, polyline"
-            )) {
-              if (s.tagName.toLowerCase() === "path") {
-                if ((s.getAttribute("d") || "").trim()) {
-                  hasGeometry = true;
-                  break;
-                }
-              } else {
-                hasGeometry = true;
-                break;
-              }
-            }
-            if (!hasGeometry) empties.add(cp.id);
-          }
-          if (!empties.size) return;
-          for (const el of root.querySelectorAll("[clip-path]")) {
-            const m = /url\(#([^)]+)\)/.exec(el.getAttribute("clip-path") || "");
-            if (m && empties.has(m[1])) el.remove();
-          }
-        }
-
-        // Convert an SVG element to a vector PDF Blob sized to its viewBox (in
-        // points). svg2pdf reads computed styles, so the element must be laid
-        // out: we attach a clone offscreen, convert, then remove it. Resolves
-        // null on bad geometry.
-        async function svgElToPdfBlob(srcEl) {
-          const [, , vw, vh] = (srcEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX)
-            .split(/\s+/)
-            .map(Number);
-          if (!(vw > 0 && vh > 0)) return null;
-          const { jsPDF } = await ensurePdfLib();
-          const holder = document.createElement("div");
-          holder.style.cssText =
-            "position:absolute;left:-99999px;top:0;width:0;height:0;overflow:hidden";
-          const el = srcEl.cloneNode(true);
-          el.setAttribute("width", vw);
-          el.setAttribute("height", vh);
-          inlineUses(el);
-          pruneEmptyClips(el);
-          holder.appendChild(el);
-          document.body.appendChild(holder);
-          try {
-            const doc = new jsPDF({
-              unit: "pt",
-              format: [vw, vh],
-              orientation: vw >= vh ? "landscape" : "portrait",
-            });
-            await doc.svg(el, { x: 0, y: 0, width: vw, height: vh });
-            return doc.output("blob");
-          } finally {
-            holder.remove();
-          }
-        }
-
-        async function downloadPdf() {
-          setStatus("Generating PDF…");
-          try {
-            const blob = await svgElToPdfBlob(svgEl);
-            if (blob) {
-              triggerDownload(blob, "abwugida.pdf");
-              setStatus("");
-            } else setStatus("PDF export failed.");
-          } catch (e) {
-            console.error("PDF export error:", e);
-            setStatus("PDF export failed.");
-          }
-        }
-
-        async function downloadLayerPdf(keepBlack) {
-          setStatus("Generating PDF…");
-          try {
-            const blob = await svgElToPdfBlob(filterSvgLayer(keepBlack));
-            if (blob) {
-              triggerDownload(
-                blob,
-                keepBlack ? "abwugida-black.pdf" : "abwugida-color.pdf"
-              );
-              setStatus("");
-            } else setStatus("PDF layer export failed.");
-          } catch (e) {
-            console.error("PDF layer export error:", e);
-            setStatus("PDF layer export failed.");
-          }
-        }
-
         let openedAt = 0;
         const openModal = () => {
           modal.classList.add("open");
@@ -1995,13 +1834,10 @@
         });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
-        pdfBtn.addEventListener("click", downloadPdf);
         blackSvgBtn.addEventListener("click", () => downloadLayerSvg(true));
         blackPngBtn.addEventListener("click", () => downloadLayerPng(true));
-        blackPdfBtn.addEventListener("click", () => downloadLayerPdf(true));
         colorSvgBtn.addEventListener("click", () => downloadLayerSvg(false));
         colorPngBtn.addEventListener("click", () => downloadLayerPng(false));
-        colorPdfBtn.addEventListener("click", () => downloadLayerPdf(false));
 
         // setBackground() (options drawer) calls this to refresh the preview
         // when the shared background setting changes while the modal is open.
