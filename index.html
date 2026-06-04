@@ -1261,6 +1261,9 @@
         <div class="export-bar">
           <span class="muted">Background set in options (⚙)</span>
           <div class="export-actions">
+            <button type="button" class="btn" id="export-copy-btn" disabled>
+              Copy
+            </button>
             <button type="button" class="btn" id="export-svg-btn" disabled>
               SVG
             </button>
@@ -1330,6 +1333,7 @@
         const bgColor = document.getElementById("bg-color");
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
+        const copyBtn = document.getElementById("export-copy-btn");
         const statusEl = document.getElementById("export-status");
 
         let hb = null; // the loaded module
@@ -1342,6 +1346,7 @@
         function setEnabled(on) {
           svgBtn.disabled = !on;
           pngBtn.disabled = !on;
+          copyBtn.disabled = !on;
         }
 
         async function ensureHb() {
@@ -1557,11 +1562,13 @@
           );
         }
 
-        async function downloadPng() {
+        // Rasterize the current export SVG to a PNG Blob (shared by the PNG
+        // download and the clipboard copy). Resolves null on failure.
+        async function renderPngBlob() {
           const [, , vw, vh] = (svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX)
             .split(/\s+/)
             .map(Number);
-          if (!(vw > 0 && vh > 0)) return;
+          if (!(vw > 0 && vh > 0)) return null;
           const scale = PNG_MAX / Math.max(vw, vh);
           const w = Math.max(1, Math.round(vw * scale));
           const h = Math.max(1, Math.round(vh * scale));
@@ -1576,17 +1583,50 @@
             img = await loadImage(url);
           } catch {
             URL.revokeObjectURL(url);
-            setStatus("PNG export failed.");
-            return;
+            return null;
           }
           const canvas = document.createElement("canvas");
           canvas.width = w;
           canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
           URL.revokeObjectURL(url);
-          canvas.toBlob((blob) => {
-            if (blob) triggerDownload(blob, "abwugida.png");
-          }, "image/png");
+          return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        }
+
+        async function downloadPng() {
+          const blob = await renderPngBlob();
+          if (blob) triggerDownload(blob, "abwugida.png");
+          else setStatus("PNG export failed.");
+        }
+
+        async function copyPng() {
+          if (!navigator.clipboard || !window.ClipboardItem) {
+            setStatus("Clipboard image copy isn't supported in this browser.");
+            return;
+          }
+          setStatus("Copying…");
+          try {
+            // Some browsers require the ClipboardItem to be given a promise of
+            // the blob synchronously within the user gesture.
+            await navigator.clipboard.write([
+              new ClipboardItem({ "image/png": renderPngBlob() }),
+            ]);
+            setStatus("Copied PNG to clipboard.");
+          } catch (e) {
+            // Safari/Firefox can reject the promise-valued ClipboardItem; retry
+            // with a concrete blob.
+            try {
+              const blob = await renderPngBlob();
+              if (!blob) throw new Error("no image");
+              await navigator.clipboard.write([
+                new ClipboardItem({ "image/png": blob }),
+              ]);
+              setStatus("Copied PNG to clipboard.");
+            } catch (e2) {
+              console.error("Clipboard copy failed:", e2);
+              setStatus("Copy failed: " + (e2?.message || e2));
+            }
+          }
         }
 
         let openedAt = 0;
@@ -1617,6 +1657,7 @@
         });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
+        copyBtn.addEventListener("click", copyPng);
 
         // setBackground() (options drawer) calls this to refresh the preview
         // when the shared background setting changes while the modal is open.
