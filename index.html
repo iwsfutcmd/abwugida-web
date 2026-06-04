@@ -39,9 +39,10 @@
           }
           document.getElementById("ipa-output").innerHTML = details.ipa;
           document.getElementById("string-output").innerHTML = details.string;
-          [...document.getElementsByClassName("abwugida")].forEach(
-            (e) => (e.innerHTML = details.cps)
-          );
+          // The glyph output is the raw source of truth; relayoutDisplay()
+          // renders it (wrapping via pretext when enabled).
+          displayRawCps = details.cps;
+          relayoutDisplay();
         } catch (e) {
           document.getElementById("display").innerHTML =
             `<span class="unknown">Got error: ${e}</span>`;
@@ -53,6 +54,7 @@
         [...document.getElementsByClassName("abwugida")].forEach(
           (e) => (e.style.fontSize = fontSize)
         );
+        relayoutDisplay(); // width budget per line changed
       }
 
       function setWeight() {
@@ -60,7 +62,22 @@
         [...document.getElementsByClassName("abwugida")].forEach(
           (e) => (e.style.fontWeight = weight)
         );
+        relayoutDisplay(); // glyph advances changed
       }
+
+      // Line height as a unitless multiplier (like CSS line-height). Drives the
+      // on-screen spacing and, via lineHeightEm(), the export's line stacking.
+      function lineHeightEm() {
+        return parseFloat(document.getElementById("lineheight").value) || 1.2;
+      }
+
+      function setLineHeight() {
+        document.getElementById("display").style.lineHeight = lineHeightEm();
+        // Doesn't change wrapping (horizontal), but the export stacks lines by
+        // this value — refresh the preview if it's open.
+        if (window.rerenderExportPreview) window.rerenderExportPreview();
+      }
+      window.lineHeightEm = lineHeightEm;
 
       function setAlignment() {
         const align = document.getElementById("align").value;
@@ -111,12 +128,30 @@
         }
         if (clusterStart === null) return;
 
-        // Work in code points. Convert the code-unit offset to a cp index.
-        const cps = [...text];
-        let clicked = 0;
-        for (let cu = 0; cu < clusterStart; clicked++) cu += cps[clicked].length;
+        // Convert the clicked code-unit offset to a code-point index in the
+        // *displayed* text, then map back to the raw glyph string (the display
+        // may carry pretext-inserted line breaks that aren't in the raw cps).
+        const dispCps = [...text];
+        let clickedDisp = 0;
+        for (let cu = 0; cu < clusterStart; clickedDisp++)
+          cu += dispCps[clickedDisp].length;
 
-        // Walk backwards (inclusive) to the nearest E200/E201 carrier.
+        let clicked;
+        if (displayMap) {
+          clicked = displayMap.dispToRaw[clickedDisp];
+          // If the click landed on an inserted soft break, fall back to the
+          // nearest preceding real glyph.
+          while (clicked == null || clicked < 0) {
+            if (--clickedDisp < 0) return;
+            clicked = displayMap.dispToRaw[clickedDisp];
+          }
+        } else {
+          clicked = clickedDisp; // unwrapped: displayed === raw
+        }
+
+        // Edit the raw glyph string. Walk backwards (inclusive) to the nearest
+        // E200/E201 carrier and toggle/advance the variation selector after it.
+        const cps = [...displayRawCps];
         let carrier = -1;
         for (let i = clicked; i >= 0; i--) {
           const cp = cps[i].codePointAt(0);
@@ -138,16 +173,132 @@
           cps[carrier + 1] = String.fromCodePoint(bumped);
         }
 
-        display.textContent = cps.join("");
+        displayRawCps = cps.join("");
+        relayoutDisplay();
       }
 
       function setWrap() {
-        const wrap = document.getElementById("wrap").checked;
-        // pre-wrap wraps long lines; pre keeps everything on one line.
-        // Both honor explicit linebreaks.
-        document.getElementById("display").style.whiteSpace = wrap
-          ? "pre-wrap"
-          : "pre";
+        // Wrapping is done by pretext (not CSS): relayout re-inserts the line
+        // breaks at the current width. #display stays white-space:pre so the
+        // browser doesn't also wrap.
+        relayoutDisplay();
+      }
+
+      // ---- Pretext-driven glyph layout (shared by display + export) ----
+      // displayRawCps is the logical glyph string (source of truth). The
+      // on-screen #display and the export both wrap it through the same
+      // computeGlyphLines(), so what you see is exactly what you export.
+      const PRETEXT_MODULE = "./vendor/pretext/layout.js";
+      const WORD_JOINER = "⁠";
+      let _pretext = null;
+      let displayRawCps = "";
+      // For the wrapped display: dispToRaw[i] is the raw code-point index of
+      // the i-th displayed code point, or -1 for an inserted soft break.
+      let displayMap = null;
+      let relayoutSeq = 0;
+
+      async function loadPretext() {
+        if (!_pretext) _pretext = await import(PRETEXT_MODULE);
+        return _pretext;
+      }
+
+      function displayFontString() {
+        const cs = getComputedStyle(document.getElementById("display"));
+        return `${cs.fontWeight || "400"} ${parseFloat(cs.fontSize) || 80}px Abwugida`;
+      }
+
+      // Insert a U+2060 WORD JOINER between every adjacent pair of
+      // non-whitespace code points (glyphs, punctuation, digits — anything but
+      // spaces/newlines) so pretext can only break at whitespace. The Abwugida
+      // glyphs are Private-Use codepoints, which pretext otherwise treats as
+      // individually breakable (and its overflow-wrap:break-word fallback would
+      // split long runs mid-glyph, including right before punctuation). WJ is
+      // zero-width, so it doesn't affect measurement; we strip it back out.
+      function glueGlyphs(cps) {
+        const arr = [...cps];
+        let out = "";
+        for (let i = 0; i < arr.length; i++) {
+          out += arr[i];
+          const next = arr[i + 1];
+          if (next !== undefined && !/\s/.test(arr[i]) && !/\s/.test(next)) {
+            out += WORD_JOINER;
+          }
+        }
+        return out;
+      }
+
+      // Wrap `cps` to the display's current width using pretext (canvas
+      // measurement). Returns an array of line strings (word joiners stripped).
+      async function wrapLines(cps) {
+        const el = document.getElementById("display");
+        const fontStr = displayFontString();
+        try {
+          await document.fonts.load(fontStr);
+        } catch {}
+        const pt = await loadPretext();
+        const prepared = pt.prepareWithSegments(glueGlyphs(cps), fontStr, {
+          whiteSpace: "pre-wrap",
+        });
+        const fontSize = parseFloat(getComputedStyle(el).fontSize) || 80;
+        const { lines } = pt.layoutWithLines(prepared, el.clientWidth || 1, fontSize);
+        return lines.map((l) => l.text.split(WORD_JOINER).join(""));
+      }
+
+      // The single line-source used by BOTH the display and the export.
+      async function computeGlyphLines(cps) {
+        if (!document.getElementById("wrap").checked) return cps.split("\n");
+        return wrapLines(cps);
+      }
+      // Exposed so the export module reads the exact same glyph string + lines.
+      window.getGlyphCps = () => displayRawCps;
+      window.computeGlyphLines = computeGlyphLines;
+
+      // Render displayRawCps into #display, wrapping via pretext when enabled.
+      async function relayoutDisplay() {
+        const el = document.getElementById("display");
+        if (!document.getElementById("wrap").checked || !displayRawCps) {
+          el.textContent = displayRawCps;
+          displayMap = null;
+          return;
+        }
+        const mySeq = ++relayoutSeq;
+        const lines = await wrapLines(displayRawCps);
+        if (mySeq !== relayoutSeq) return; // a newer relayout superseded this
+
+        // Rebuild the displayed text and the displayed->raw code-point map.
+        // pretext keeps soft-break spaces on the line but drops hard newlines,
+        // so we re-insert a break after each line and tag whether it maps to a
+        // real raw "\n" (hard) or is a pretext-inserted soft break (-1).
+        const rawArr = [...displayRawCps];
+        let rawPos = 0;
+        let displayed = "";
+        const dispToRaw = [];
+        for (let i = 0; i < lines.length; i++) {
+          // Hide the hanging break-space (so right/center alignment is flush)
+          // while still advancing rawPos past it to keep the map aligned.
+          const chars = [...lines[i]];
+          let visEnd = chars.length;
+          while (visEnd > 0 && /\s/.test(chars[visEnd - 1])) visEnd--;
+          for (let k = 0; k < chars.length; k++) {
+            if (k < visEnd) {
+              displayed += chars[k];
+              dispToRaw.push(rawPos);
+            }
+            rawPos++;
+          }
+          if (i < lines.length - 1) {
+            if (rawArr[rawPos] === "\n") {
+              displayed += "\n";
+              dispToRaw.push(rawPos);
+              rawPos++;
+            } else {
+              displayed += "\n";
+              dispToRaw.push(-1);
+            }
+          }
+        }
+        el.textContent = displayed;
+        displayMap = { dispToRaw };
       }
 
       // Single background setting, shared by the on-screen output and the
@@ -776,6 +927,7 @@
         font-size: 0.92rem;
       }
       #fontsize,
+      #lineheight,
       #weight,
       #align,
       #palette {
@@ -787,7 +939,8 @@
         background: var(--surface);
         color: var(--text);
       }
-      #fontsize {
+      #fontsize,
+      #lineheight {
         width: 90px;
       }
       .readout {
@@ -1047,6 +1200,19 @@
             <span class="muted">px</span>
           </div>
           <div class="opt-row">
+            <label for="lineheight">Line height</label>
+            <input
+              type="number"
+              name="lineheight"
+              id="lineheight"
+              value="1.2"
+              min="0.5"
+              step="0.1"
+              onchange="setLineHeight()"
+            />
+            <span class="muted">×</span>
+          </div>
+          <div class="opt-row">
             <label for="weight">Weight</label>
             <select id="weight" onchange="setWeight()">
               <option value="100">Thin</option>
@@ -1132,6 +1298,9 @@
         <div class="export-bar">
           <span class="muted">Background set in options (⚙)</span>
           <div class="export-actions">
+            <button type="button" class="btn" id="export-copy-btn" disabled>
+              Copy
+            </button>
             <button type="button" class="btn" id="export-svg-btn" disabled>
               SVG
             </button>
@@ -1175,6 +1344,10 @@
       // WASM module, so it's lazy-loaded on first use.
       (function () {
         const HB_MODULE = "./vendor/harfbuzzjs/index.mjs";
+        // Pretext (pure-JS, no WASM) does the line breaking: it measures the
+        // Abwugida glyphs with canvas measureText and tells us where each line
+        // wraps (shared with the on-screen display via window.computeGlyphLines).
+        // HarfBuzz still shapes/colors each resulting line.
         const FONT_BY_WEIGHT = {
           100: "font/Abwugida-Thin.ttf",
           400: "font/Abwugida-Regular.ttf",
@@ -1197,6 +1370,7 @@
         const bgColor = document.getElementById("bg-color");
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
+        const copyBtn = document.getElementById("export-copy-btn");
         const statusEl = document.getElementById("export-status");
 
         let hb = null; // the loaded module
@@ -1209,6 +1383,7 @@
         function setEnabled(on) {
           svgBtn.disabled = !on;
           pngBtn.disabled = !on;
+          copyBtn.disabled = !on;
         }
 
         async function ensureHb() {
@@ -1236,32 +1411,51 @@
           return m ? parseInt(m[1], 10) : 0;
         }
 
-        // Shape the output to a standalone SVG string. Splits on explicit
-        // newlines and stacks each line by the font's line height, since
-        // HarfBuzz shaping itself doesn't break lines.
+        // Shape the output to a standalone SVG string. We read the same raw
+        // glyph string and the same line breaks the on-screen display uses
+        // (window.getGlyphCps / window.computeGlyphLines), so the export
+        // matches the display exactly. Each line is shaped by HarfBuzz and
+        // stacked by the font's line height (HB doesn't break lines itself).
         async function shapeToSvg() {
-          const text = document.getElementById("display").textContent;
+          const text = window.getGlyphCps
+            ? window.getGlyphCps()
+            : document.getElementById("display").textContent;
           if (!text) return null;
           const weight = document.getElementById("weight").value;
           const palette = paletteIndex();
           const lib = await ensureHb();
           const font = await getFont(weight);
-          const ext = font.hExtents();
-          const lineHeight =
-            ext.ascender - ext.descender + ext.lineGap || font._upem || 1000;
+          // Stack lines by the chosen line-height multiplier × the em (upem),
+          // matching the on-screen CSS line-height (N × font-size).
+          const em = font._upem || 1000;
+          const lineHeightMul = window.lineHeightEm ? window.lineHeightEm() : 1.2;
+          const lineHeight = lineHeightMul * em;
 
-          const glyphs = [];
-          text.split("\n").forEach((line, li) => {
-            if (!line) return;
+          const lines = await (window.computeGlyphLines
+            ? window.computeGlyphLines(text)
+            : text.split("\n"));
+
+          // Shape each line into its own glyph list + measured width, so we can
+          // honor the alignment setting. After ink-crop the absolute origin is
+          // normalized away, so aligning relative to the widest line gives the
+          // expected left/center/right block.
+          const perLine = [];
+          let maxW = 0;
+          lines.forEach((line, li) => {
+            // Drop the hanging break-space so the line's width is just its
+            // visible glyphs — otherwise right/center alignment isn't flush.
+            const lineStr = line.replace(/\s+$/u, "");
+            if (!lineStr) return;
             const baseY = -li * lineHeight;
             const buffer = new lib.Buffer();
-            buffer.addText(line.normalize("NFD"));
+            buffer.addText(lineStr.normalize("NFD"));
             buffer.guessSegmentProperties();
             lib.shape(font, buffer);
             let ax = 0;
             let ay = 0;
+            const lineGlyphs = [];
             for (const g of buffer.getGlyphInfosAndPositions()) {
-              glyphs.push({
+              lineGlyphs.push({
                 glyph: g.codepoint,
                 x: ax + (g.xOffset ?? 0),
                 y: baseY + ay + (g.yOffset ?? 0),
@@ -1269,7 +1463,20 @@
               ax += g.xAdvance ?? 0;
               ay += g.yAdvance ?? 0;
             }
+            perLine.push({ glyphs: lineGlyphs, width: ax });
+            if (ax > maxW) maxW = ax;
           });
+
+          const align = document.getElementById("align").value;
+          const factor = align === "center" ? 0.5 : align === "right" ? 1 : 0;
+          const glyphs = [];
+          for (const { glyphs: lineGlyphs, width } of perLine) {
+            const dx = (maxW - width) * factor;
+            for (const g of lineGlyphs) {
+              g.x += dx;
+              glyphs.push(g);
+            }
+          }
           if (!glyphs.length) return null;
           return font.glyphsToSvg(glyphs, { palette });
         }
@@ -1397,11 +1604,13 @@
           );
         }
 
-        async function downloadPng() {
+        // Rasterize the current export SVG to a PNG Blob (shared by the PNG
+        // download and the clipboard copy). Resolves null on failure.
+        async function renderPngBlob() {
           const [, , vw, vh] = (svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX)
             .split(/\s+/)
             .map(Number);
-          if (!(vw > 0 && vh > 0)) return;
+          if (!(vw > 0 && vh > 0)) return null;
           const scale = PNG_MAX / Math.max(vw, vh);
           const w = Math.max(1, Math.round(vw * scale));
           const h = Math.max(1, Math.round(vh * scale));
@@ -1416,17 +1625,50 @@
             img = await loadImage(url);
           } catch {
             URL.revokeObjectURL(url);
-            setStatus("PNG export failed.");
-            return;
+            return null;
           }
           const canvas = document.createElement("canvas");
           canvas.width = w;
           canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
           URL.revokeObjectURL(url);
-          canvas.toBlob((blob) => {
-            if (blob) triggerDownload(blob, "abwugida.png");
-          }, "image/png");
+          return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        }
+
+        async function downloadPng() {
+          const blob = await renderPngBlob();
+          if (blob) triggerDownload(blob, "abwugida.png");
+          else setStatus("PNG export failed.");
+        }
+
+        async function copyPng() {
+          if (!navigator.clipboard || !window.ClipboardItem) {
+            setStatus("Clipboard image copy isn't supported in this browser.");
+            return;
+          }
+          setStatus("Copying…");
+          try {
+            // Some browsers require the ClipboardItem to be given a promise of
+            // the blob synchronously within the user gesture.
+            await navigator.clipboard.write([
+              new ClipboardItem({ "image/png": renderPngBlob() }),
+            ]);
+            setStatus("Copied PNG to clipboard.");
+          } catch (e) {
+            // Safari/Firefox can reject the promise-valued ClipboardItem; retry
+            // with a concrete blob.
+            try {
+              const blob = await renderPngBlob();
+              if (!blob) throw new Error("no image");
+              await navigator.clipboard.write([
+                new ClipboardItem({ "image/png": blob }),
+              ]);
+              setStatus("Copied PNG to clipboard.");
+            } catch (e2) {
+              console.error("Clipboard copy failed:", e2);
+              setStatus("Copy failed: " + (e2?.message || e2));
+            }
+          }
         }
 
         let openedAt = 0;
@@ -1457,6 +1699,7 @@
         });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
+        copyBtn.addEventListener("click", copyPng);
 
         // setBackground() (options drawer) calls this to refresh the preview
         // when the shared background setting changes while the modal is open.
@@ -1465,15 +1708,24 @@
         };
 
         // Warm HarfBuzz + every weight's font on page load so the first export
-        // is instant (instead of paying the WASM/font download on first click).
+        // is instant (instead of paying the download on first click). Pretext
+        // is warmed by the display layout path.
         ensureHb()
           .then(() => Promise.all(Object.keys(FONT_BY_WEIGHT).map((w) => getFont(w))))
           .catch((e) => console.warn("HarfBuzz preload failed:", e));
       })();
 
+      // Re-wrap the display when its width changes (debounced to a frame).
+      let _resizeRaf = 0;
+      window.addEventListener("resize", () => {
+        cancelAnimationFrame(_resizeRaf);
+        _resizeRaf = requestAnimationFrame(relayoutDisplay);
+      });
+
       update();
       setFontSize();
       setWeight();
+      setLineHeight();
       restoreBackground();
     </script>
   </body>
