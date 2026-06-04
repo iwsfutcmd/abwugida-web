@@ -1365,7 +1365,6 @@
           ></svg>
         </div>
         <div class="export-bar">
-          <span class="muted">Background set in options (⚙)</span>
           <div class="export-actions">
             <button type="button" class="btn" id="export-svg-btn" disabled>
               SVG
@@ -1376,14 +1375,12 @@
           </div>
         </div>
         <div class="export-layers" id="export-layers" hidden>
-          <span class="muted">Layers</span>
+          <span class="muted">Layers (.zip)</span>
           <div class="export-actions">
             <span class="layer-swatch" style="background:#000"></span>
-            <button type="button" class="btn" id="export-black-svg-btn" disabled>SVG</button>
-            <button type="button" class="btn btn-accent" id="export-black-png-btn" disabled>PNG</button>
             <span class="layer-swatch" id="export-color-swatch"></span>
-            <button type="button" class="btn" id="export-color-svg-btn" disabled>SVG</button>
-            <button type="button" class="btn btn-accent" id="export-color-png-btn" disabled>PNG</button>
+            <button type="button" class="btn" id="export-layers-svg-btn" disabled>SVG</button>
+            <button type="button" class="btn btn-accent" id="export-layers-png-btn" disabled>PNG</button>
           </div>
         </div>
         <div class="export-status" id="export-status"></div>
@@ -1449,10 +1446,8 @@
         const pngBtn = document.getElementById("export-png-btn");
         const statusEl = document.getElementById("export-status");
         const layersEl = document.getElementById("export-layers");
-        const blackSvgBtn = document.getElementById("export-black-svg-btn");
-        const blackPngBtn = document.getElementById("export-black-png-btn");
-        const colorSvgBtn = document.getElementById("export-color-svg-btn");
-        const colorPngBtn = document.getElementById("export-color-png-btn");
+        const layersSvgBtn = document.getElementById("export-layers-svg-btn");
+        const layersPngBtn = document.getElementById("export-layers-png-btn");
         const colorSwatch = document.getElementById("export-color-swatch");
 
         let hb = null; // the loaded module
@@ -1466,10 +1461,8 @@
           svgBtn.disabled = !on;
           pngBtn.disabled = !on;
           if (!on) {
-            blackSvgBtn.disabled = true;
-            blackPngBtn.disabled = true;
-            colorSvgBtn.disabled = true;
-            colorPngBtn.disabled = true;
+            layersSvgBtn.disabled = true;
+            layersPngBtn.disabled = true;
             layersEl.hidden = true;
           }
         }
@@ -1703,10 +1696,8 @@
             if (colorFill) {
               colorSwatch.style.background = colorFill;
               layersEl.hidden = false;
-              blackSvgBtn.disabled = false;
-              blackPngBtn.disabled = false;
-              colorSvgBtn.disabled = false;
-              colorPngBtn.disabled = false;
+              layersSvgBtn.disabled = false;
+              layersPngBtn.disabled = false;
             }
           } catch (e) {
             console.error("Export render error:", e);
@@ -1767,18 +1758,20 @@
           else setStatus("PNG export failed.");
         }
 
-        function downloadLayerSvg(keepBlack) {
+        // The black and color layers are exported together as a single .zip so
+        // they don't have to be downloaded one at a time. The bytes for each
+        // layer come from the same filterSvgLayer() / rasterize path the SVG
+        // and PNG exports use.
+        function layerSvgBytes(keepBlack) {
           const layerEl = filterSvgLayer(keepBlack);
-          triggerDownload(
-            new Blob([layerEl.outerHTML], { type: "image/svg+xml" }),
-            keepBlack ? "abwugida-black.svg" : "abwugida-color.svg"
-          );
+          return new TextEncoder().encode(layerEl.outerHTML);
         }
 
-        async function downloadLayerPng(keepBlack) {
-          const viewBox = svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX;
-          const [,, vw, vh] = viewBox.split(/\s+/).map(Number);
-          if (!(vw > 0 && vh > 0)) { setStatus("PNG layer export failed."); return; }
+        async function layerPngBytes(keepBlack) {
+          const [, , vw, vh] = (svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX)
+            .split(/\s+/)
+            .map(Number);
+          if (!(vw > 0 && vh > 0)) return null;
           const scale = PNG_MAX / Math.max(vw, vh);
           const w = Math.max(1, Math.round(vw * scale));
           const h = Math.max(1, Math.round(vh * scale));
@@ -1793,8 +1786,7 @@
             img = await loadImage(url);
           } catch {
             URL.revokeObjectURL(url);
-            setStatus("PNG layer export failed.");
-            return;
+            return null;
           }
           const canvas = document.createElement("canvas");
           canvas.width = w;
@@ -1802,8 +1794,86 @@
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
           URL.revokeObjectURL(url);
           const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-          if (blob) triggerDownload(blob, keepBlack ? "abwugida-black.png" : "abwugida-color.png");
-          else setStatus("PNG layer export failed.");
+          return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+        }
+
+        // Minimal store-only (uncompressed) ZIP writer — enough to bundle a
+        // couple of small files into one download without pulling in a
+        // dependency. files: [{ name, data: Uint8Array }].
+        function crc32(bytes) {
+          let crc = ~0;
+          for (let i = 0; i < bytes.length; i++) {
+            crc ^= bytes[i];
+            for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+          }
+          return ~crc >>> 0;
+        }
+        function makeZip(files) {
+          const enc = new TextEncoder();
+          const u16 = (n) => [n & 0xff, (n >> 8) & 0xff];
+          const u32 = (n) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
+          const parts = [];
+          const central = [];
+          let offset = 0;
+          for (const f of files) {
+            const name = enc.encode(f.name);
+            const crc = crc32(f.data);
+            const size = f.data.length;
+            const local = new Uint8Array([
+              ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), // sig, ver, flags, method=store
+              ...u16(0), ...u16(0), // dos time, date
+              ...u32(crc), ...u32(size), ...u32(size),
+              ...u16(name.length), ...u16(0),
+              ...name,
+            ]);
+            parts.push(local, f.data);
+            central.push({ name, crc, size, offset });
+            offset += local.length + size;
+          }
+          const dir = [];
+          let dirSize = 0;
+          for (const c of central) {
+            const rec = new Uint8Array([
+              ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0),
+              ...u16(0), ...u16(0),
+              ...u32(c.crc), ...u32(c.size), ...u32(c.size),
+              ...u16(c.name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+              ...u32(0), ...u32(c.offset),
+              ...c.name,
+            ]);
+            dir.push(rec);
+            dirSize += rec.length;
+          }
+          const end = new Uint8Array([
+            ...u32(0x06054b50), ...u16(0), ...u16(0),
+            ...u16(central.length), ...u16(central.length),
+            ...u32(dirSize), ...u32(offset), ...u16(0),
+          ]);
+          return new Blob([...parts, ...dir, end], { type: "application/zip" });
+        }
+
+        function downloadLayersSvg() {
+          const zip = makeZip([
+            { name: "abwugida-black.svg", data: layerSvgBytes(true) },
+            { name: "abwugida-color.svg", data: layerSvgBytes(false) },
+          ]);
+          triggerDownload(zip, "abwugida-layers-svg.zip");
+        }
+
+        async function downloadLayersPng() {
+          setStatus("Rendering layers…");
+          const black = await layerPngBytes(true);
+          const color = await layerPngBytes(false);
+          if (!black || !color) {
+            setStatus("PNG layer export failed.");
+            return;
+          }
+          const zip = makeZip([
+            { name: "abwugida-black.png", data: black },
+            { name: "abwugida-color.png", data: color },
+          ]);
+          triggerDownload(zip, "abwugida-layers-png.zip");
+          setStatus("");
         }
 
         let openedAt = 0;
@@ -1834,10 +1904,8 @@
         });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
-        blackSvgBtn.addEventListener("click", () => downloadLayerSvg(true));
-        blackPngBtn.addEventListener("click", () => downloadLayerPng(true));
-        colorSvgBtn.addEventListener("click", () => downloadLayerSvg(false));
-        colorPngBtn.addEventListener("click", () => downloadLayerPng(false));
+        layersSvgBtn.addEventListener("click", downloadLayersSvg);
+        layersPngBtn.addEventListener("click", downloadLayersPng);
 
         // setBackground() (options drawer) calls this to refresh the preview
         // when the shared background setting changes while the modal is open.
