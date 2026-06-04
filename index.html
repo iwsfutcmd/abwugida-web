@@ -65,6 +65,20 @@
         relayoutDisplay(); // glyph advances changed
       }
 
+      // Line height as a unitless multiplier (like CSS line-height). Drives the
+      // on-screen spacing and, via lineHeightEm(), the export's line stacking.
+      function lineHeightEm() {
+        return parseFloat(document.getElementById("lineheight").value) || 1.2;
+      }
+
+      function setLineHeight() {
+        document.getElementById("display").style.lineHeight = lineHeightEm();
+        // Doesn't change wrapping (horizontal), but the export stacks lines by
+        // this value — refresh the preview if it's open.
+        if (window.rerenderExportPreview) window.rerenderExportPreview();
+      }
+      window.lineHeightEm = lineHeightEm;
+
       function setAlignment() {
         const align = document.getElementById("align").value;
         document.getElementById("display").style.textAlign = align;
@@ -906,6 +920,7 @@
         font-size: 0.92rem;
       }
       #fontsize,
+      #lineheight,
       #weight,
       #align,
       #palette {
@@ -917,7 +932,8 @@
         background: var(--surface);
         color: var(--text);
       }
-      #fontsize {
+      #fontsize,
+      #lineheight {
         width: 90px;
       }
       .readout {
@@ -1177,6 +1193,19 @@
             <span class="muted">px</span>
           </div>
           <div class="opt-row">
+            <label for="lineheight">Line height</label>
+            <input
+              type="number"
+              name="lineheight"
+              id="lineheight"
+              value="1.2"
+              min="0.5"
+              step="0.1"
+              onchange="setLineHeight()"
+            />
+            <span class="muted">×</span>
+          </div>
+          <div class="opt-row">
             <label for="weight">Weight</label>
             <select id="weight" onchange="setWeight()">
               <option value="100">Thin</option>
@@ -1389,9 +1418,11 @@
           const palette = paletteIndex();
           const lib = await ensureHb();
           const font = await getFont(weight);
-          const ext = font.hExtents();
-          const lineHeight =
-            ext.ascender - ext.descender + ext.lineGap || font._upem || 1000;
+          // Stack lines by the chosen line-height multiplier × the em (upem),
+          // matching the on-screen CSS line-height (N × font-size).
+          const em = font._upem || 1000;
+          const lineHeightMul = window.lineHeightEm ? window.lineHeightEm() : 1.2;
+          const lineHeight = lineHeightMul * em;
 
           const lines = await (window.computeGlyphLines
             ? window.computeGlyphLines(text)
@@ -1684,6 +1715,7 @@
       update();
       setFontSize();
       setWeight();
+      setLineHeight();
       restoreBackground();
     </script>
   </body>
