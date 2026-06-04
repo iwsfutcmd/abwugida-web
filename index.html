@@ -193,12 +193,13 @@
         return `${cs.fontWeight || "400"} ${parseFloat(cs.fontSize) || 80}px Abwugida`;
       }
 
-      // Glue every run of non-whitespace glyphs with U+2060 WORD JOINER so
-      // pretext can only break at spaces/newlines — never between Abwugida
-      // glyphs. The glyphs are Private-Use codepoints, which pretext otherwise
-      // treats as individually breakable (and its overflow-wrap:break-word
-      // fallback would split long words mid-glyph). WJ is zero-width, so it
-      // doesn't affect measurement; we strip it back out of the result.
+      // Insert a U+2060 WORD JOINER between every adjacent pair of
+      // non-whitespace code points (glyphs, punctuation, digits — anything but
+      // spaces/newlines) so pretext can only break at whitespace. The Abwugida
+      // glyphs are Private-Use codepoints, which pretext otherwise treats as
+      // individually breakable (and its overflow-wrap:break-word fallback would
+      // split long runs mid-glyph, including right before punctuation). WJ is
+      // zero-width, so it doesn't affect measurement; we strip it back out.
       function glueGlyphs(cps) {
         const arr = [...cps];
         let out = "";
