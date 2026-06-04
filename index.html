@@ -253,6 +253,22 @@
       window.getGlyphCps = () => displayRawCps;
       window.computeGlyphLines = computeGlyphLines;
 
+      // Copy the actual glyph codepoints (including any cycled variation
+      // selectors and explicit newlines) to the clipboard as text — not the
+      // soft-wrap line breaks, which aren't part of the real string.
+      function copyGlyphs() {
+        const btn = document.getElementById("copy-glyphs");
+        if (!displayRawCps || !navigator.clipboard) return;
+        navigator.clipboard.writeText(displayRawCps).then(
+          () => {
+            const prev = btn.textContent;
+            btn.textContent = "Copied!";
+            setTimeout(() => (btn.textContent = prev), 1200);
+          },
+          (e) => console.warn("Copy failed:", e)
+        );
+      }
+
       // Render displayRawCps into #display, wrapping via pretext when enabled.
       async function relayoutDisplay() {
         const el = document.getElementById("display");
@@ -722,6 +738,32 @@
       }
 
       /* ---- Output card ---- */
+      /* Wrapper holds the corner Copy button outside the card's scroll area. */
+      .output-wrap {
+        position: relative;
+      }
+      .copy-glyphs {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 2;
+        font-family: var(--ui);
+        font-size: 0.78rem;
+        font-weight: 600;
+        padding: 5px 10px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+        opacity: 0.85;
+        transition: opacity 0.12s, border-color 0.12s;
+      }
+      .copy-glyphs:hover {
+        opacity: 1;
+        border-color: var(--accent);
+      }
+
       /* The glyph font is drawn black-on-paper, so the ink color is pinned
          regardless of the light/dark UI. The background color is driven by the
          "Background" option (setBackground): a solid color, or — when off —
@@ -1155,9 +1197,20 @@
         >
       </div>
 
-      <section class="output-card" aria-label="Output">
-        <div id="display" class="abwugida" onclick="cycleVariation(event)"></div>
-      </section>
+      <div class="output-wrap">
+        <button
+          type="button"
+          id="copy-glyphs"
+          class="copy-glyphs"
+          onclick="copyGlyphs()"
+          aria-label="Copy glyph codepoints"
+        >
+          Copy
+        </button>
+        <section class="output-card" aria-label="Output">
+          <div id="display" class="abwugida" onclick="cycleVariation(event)"></div>
+        </section>
+      </div>
 
       <div class="input-wrap">
         <label class="field-label" for="text">Input</label>
@@ -1298,9 +1351,6 @@
         <div class="export-bar">
           <span class="muted">Background set in options (⚙)</span>
           <div class="export-actions">
-            <button type="button" class="btn" id="export-copy-btn" disabled>
-              Copy
-            </button>
             <button type="button" class="btn" id="export-svg-btn" disabled>
               SVG
             </button>
@@ -1370,7 +1420,6 @@
         const bgColor = document.getElementById("bg-color");
         const svgBtn = document.getElementById("export-svg-btn");
         const pngBtn = document.getElementById("export-png-btn");
-        const copyBtn = document.getElementById("export-copy-btn");
         const statusEl = document.getElementById("export-status");
 
         let hb = null; // the loaded module
@@ -1383,7 +1432,6 @@
         function setEnabled(on) {
           svgBtn.disabled = !on;
           pngBtn.disabled = !on;
-          copyBtn.disabled = !on;
         }
 
         async function ensureHb() {
@@ -1641,35 +1689,6 @@
           else setStatus("PNG export failed.");
         }
 
-        async function copyPng() {
-          if (!navigator.clipboard || !window.ClipboardItem) {
-            setStatus("Clipboard image copy isn't supported in this browser.");
-            return;
-          }
-          setStatus("Copying…");
-          try {
-            // Some browsers require the ClipboardItem to be given a promise of
-            // the blob synchronously within the user gesture.
-            await navigator.clipboard.write([
-              new ClipboardItem({ "image/png": renderPngBlob() }),
-            ]);
-            setStatus("Copied PNG to clipboard.");
-          } catch (e) {
-            // Safari/Firefox can reject the promise-valued ClipboardItem; retry
-            // with a concrete blob.
-            try {
-              const blob = await renderPngBlob();
-              if (!blob) throw new Error("no image");
-              await navigator.clipboard.write([
-                new ClipboardItem({ "image/png": blob }),
-              ]);
-              setStatus("Copied PNG to clipboard.");
-            } catch (e2) {
-              console.error("Clipboard copy failed:", e2);
-              setStatus("Copy failed: " + (e2?.message || e2));
-            }
-          }
-        }
 
         let openedAt = 0;
         const openModal = () => {
@@ -1699,7 +1718,6 @@
         });
         svgBtn.addEventListener("click", downloadSvg);
         pngBtn.addEventListener("click", downloadPng);
-        copyBtn.addEventListener("click", copyPng);
 
         // setBackground() (options drawer) calls this to refresh the preview
         // when the shared background setting changes while the modal is open.
