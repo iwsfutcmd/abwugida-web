@@ -353,6 +353,32 @@
         setBackground();
       }
 
+      // Fixed print area (in mm) + resolution (dpi). Drives the export's PNG
+      // pixel size and the SVG's physical dimensions; read by the export
+      // module via #area-w / #area-h / #area-dpi. Persisted across visits.
+      const AREA_KEY = "abwugida.area";
+
+      function setArea() {
+        const w = document.getElementById("area-w").value;
+        const h = document.getElementById("area-h").value;
+        const dpi = document.getElementById("area-dpi").value;
+        try {
+          localStorage.setItem(AREA_KEY, JSON.stringify({ w, h, dpi }));
+        } catch {}
+        if (window.rerenderExportPreview) window.rerenderExportPreview();
+      }
+
+      function restoreArea() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(AREA_KEY) || "null");
+          if (saved) {
+            if (saved.w) document.getElementById("area-w").value = saved.w;
+            if (saved.h) document.getElementById("area-h").value = saved.h;
+            if (saved.dpi) document.getElementById("area-dpi").value = saved.dpi;
+          }
+        } catch {}
+      }
+
       // ---- CPAL palette names ----
       // Browsers don't expose CPAL palette labels to CSS/JS, so we read them
       // out of the font binary ourselves: parse the sfnt table directory, then
@@ -1090,6 +1116,12 @@
         width: 100%;
         max-height: 42vh;
       }
+      /* When a fixed print area is set, the SVG box is the label; outline it
+         so the (possibly transparent) label edge is visible in the preview. */
+      #export-svg.has-label {
+        outline: 1px dashed var(--border);
+        outline-offset: -1px;
+      }
       .export-bar {
         display: flex;
         align-items: center;
@@ -1289,6 +1321,51 @@
               oninput="setBackground()"
               style="margin-left: auto"
             />
+          </div>
+        </div>
+
+        <div class="opt-group">
+          <span class="opt-title">Print size</span>
+          <div class="opt-row">
+            <label for="area-w">Area</label>
+            <input
+              type="number"
+              id="area-w"
+              placeholder="width"
+              min="1"
+              step="0.1"
+              oninput="setArea()"
+              style="width: 5em"
+            />
+            <span class="muted">×</span>
+            <input
+              type="number"
+              id="area-h"
+              placeholder="height"
+              min="1"
+              step="0.1"
+              oninput="setArea()"
+              style="width: 5em"
+            />
+            <span class="muted">mm</span>
+          </div>
+          <div class="opt-row">
+            <label for="area-dpi">Resolution</label>
+            <input
+              type="number"
+              id="area-dpi"
+              value="300"
+              min="1"
+              step="1"
+              oninput="setArea()"
+            />
+            <span class="muted">dpi</span>
+          </div>
+          <div class="opt-row">
+            <span class="muted">
+              Sets the PNG to an exact physical size; leave width/height blank
+              for an auto-sized export.
+            </span>
           </div>
         </div>
 
@@ -1613,6 +1690,67 @@
           });
         }
 
+        // Fixed print area read from the options drawer. Active only when both
+        // dimensions are positive; dpi defaults to 300.
+        const MM_PER_IN = 25.4;
+        const PNG_PX_CAP = 10000; // safety ceiling per side
+        function getArea() {
+          const wmm = parseFloat(document.getElementById("area-w").value);
+          const hmm = parseFloat(document.getElementById("area-h").value);
+          let dpi = parseFloat(document.getElementById("area-dpi").value);
+          if (!(dpi > 0)) dpi = 300;
+          return { active: wmm > 0 && hmm > 0, wmm, hmm, dpi };
+        }
+
+        // Expand a tight ink viewBox to the label's aspect ratio, centering the
+        // ink (contain fit) so the content sits in the middle of the label.
+        function labelViewBox(vb, area) {
+          const [ix, iy, iw, ih] = vb.split(/\s+/).map(Number);
+          const labelAspect = area.wmm / area.hmm;
+          let lw, lh;
+          if (iw / ih > labelAspect) {
+            lw = iw;
+            lh = iw / labelAspect;
+          } else {
+            lh = ih;
+            lw = ih * labelAspect;
+          }
+          return `${ix - (lw - iw) / 2} ${iy - (lh - ih) / 2} ${lw} ${lh}`;
+        }
+
+        // Target PNG pixel size for a viewBox: the exact physical size at the
+        // chosen dpi when an area is set, else longest-edge = PNG_MAX.
+        function pngTargetSize(vw, vh) {
+          const area = getArea();
+          if (area.active) {
+            let w = Math.max(1, Math.round((area.wmm / MM_PER_IN) * area.dpi));
+            let h = Math.max(1, Math.round((area.hmm / MM_PER_IN) * area.dpi));
+            const m = Math.max(w, h);
+            if (m > PNG_PX_CAP) {
+              const s = PNG_PX_CAP / m;
+              w = Math.max(1, Math.round(w * s));
+              h = Math.max(1, Math.round(h * s));
+            }
+            return { w, h };
+          }
+          const scale = PNG_MAX / Math.max(vw, vh);
+          return {
+            w: Math.max(1, Math.round(vw * scale)),
+            h: Math.max(1, Math.round(vh * scale)),
+          };
+        }
+
+        // Stamp an SVG clone with the label's physical size (mm) so vector
+        // imports land at the right size. No-op when no area is set.
+        function applyPhysicalSize(el) {
+          const area = getArea();
+          if (area.active) {
+            el.setAttribute("width", `${area.wmm}mm`);
+            el.setAttribute("height", `${area.hmm}mm`);
+          }
+          return el;
+        }
+
         async function render() {
           const mine = ++seq;
           setEnabled(false);
@@ -1637,8 +1775,10 @@
             if (mine !== seq) return;
 
             const children = [...rendered.childNodes];
+            const area = getArea();
+            const finalVB = area.active ? labelViewBox(viewBox, area) : viewBox;
             if (bgToggle.checked) {
-              const [bx, by, bw, bh] = viewBox.split(/\s+/).map(Number);
+              const [bx, by, bw, bh] = finalVB.split(/\s+/).map(Number);
               const rect = document.createElementNS(SVG_NS, "rect");
               rect.setAttribute("x", bx);
               rect.setAttribute("y", by);
@@ -1648,7 +1788,8 @@
               rect.setAttribute("data-role", "background");
               children.unshift(rect);
             }
-            svgEl.setAttribute("viewBox", viewBox);
+            svgEl.setAttribute("viewBox", finalVB);
+            svgEl.classList.toggle("has-label", area.active);
             svgEl.replaceChildren(...children);
             setEnabled(true);
             setStatus("");
@@ -1680,8 +1821,10 @@
         }
 
         function downloadSvg() {
+          const el = applyPhysicalSize(svgEl.cloneNode(true));
+          el.classList.remove("has-label");
           triggerDownload(
-            new Blob([svgEl.outerHTML], { type: "image/svg+xml" }),
+            new Blob([el.outerHTML], { type: "image/svg+xml" }),
             "abwugida.svg"
           );
         }
@@ -1693,10 +1836,9 @@
             .split(/\s+/)
             .map(Number);
           if (!(vw > 0 && vh > 0)) return null;
-          const scale = PNG_MAX / Math.max(vw, vh);
-          const w = Math.max(1, Math.round(vw * scale));
-          const h = Math.max(1, Math.round(vh * scale));
+          const { w, h } = pngTargetSize(vw, vh);
           const clone = svgEl.cloneNode(true);
+          clone.classList.remove("has-label");
           clone.setAttribute("width", w);
           clone.setAttribute("height", h);
           const url = URL.createObjectURL(
@@ -1729,9 +1871,9 @@
         // second keeps it from being dropped/coalesced. Each layer comes from
         // the same filterSvgLayer() / rasterize path the SVG and PNG use.
         function svgLayerBlob(keepBlack) {
-          return new Blob([filterSvgLayer(keepBlack).outerHTML], {
-            type: "image/svg+xml",
-          });
+          const el = applyPhysicalSize(filterSvgLayer(keepBlack));
+          el.classList.remove("has-label");
+          return new Blob([el.outerHTML], { type: "image/svg+xml" });
         }
 
         async function pngLayerBlob(keepBlack) {
@@ -1739,10 +1881,9 @@
             .split(/\s+/)
             .map(Number);
           if (!(vw > 0 && vh > 0)) return null;
-          const scale = PNG_MAX / Math.max(vw, vh);
-          const w = Math.max(1, Math.round(vw * scale));
-          const h = Math.max(1, Math.round(vh * scale));
+          const { w, h } = pngTargetSize(vw, vh);
           const layerEl = filterSvgLayer(keepBlack);
+          layerEl.classList.remove("has-label");
           layerEl.setAttribute("width", w);
           layerEl.setAttribute("height", h);
           const url = URL.createObjectURL(
@@ -1841,6 +1982,7 @@
       setWeight();
       setLineHeight();
       restoreBackground();
+      restoreArea();
     </script>
   </body>
 </html>
