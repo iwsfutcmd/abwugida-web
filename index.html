@@ -175,6 +175,7 @@
       // on-screen #display and the export both wrap it through the same
       // computeGlyphLines(), so what you see is exactly what you export.
       const PRETEXT_MODULE = "./vendor/pretext/layout.js";
+      const WORD_JOINER = "⁠";
       let _pretext = null;
       let displayRawCps = "";
       // For the wrapped display: dispToRaw[i] is the raw code-point index of
@@ -192,8 +193,27 @@
         return `${cs.fontWeight || "400"} ${parseFloat(cs.fontSize) || 80}px Abwugida`;
       }
 
+      // Glue every run of non-whitespace glyphs with U+2060 WORD JOINER so
+      // pretext can only break at spaces/newlines — never between Abwugida
+      // glyphs. The glyphs are Private-Use codepoints, which pretext otherwise
+      // treats as individually breakable (and its overflow-wrap:break-word
+      // fallback would split long words mid-glyph). WJ is zero-width, so it
+      // doesn't affect measurement; we strip it back out of the result.
+      function glueGlyphs(cps) {
+        const arr = [...cps];
+        let out = "";
+        for (let i = 0; i < arr.length; i++) {
+          out += arr[i];
+          const next = arr[i + 1];
+          if (next !== undefined && !/\s/.test(arr[i]) && !/\s/.test(next)) {
+            out += WORD_JOINER;
+          }
+        }
+        return out;
+      }
+
       // Wrap `cps` to the display's current width using pretext (canvas
-      // measurement). Returns an array of line strings.
+      // measurement). Returns an array of line strings (word joiners stripped).
       async function wrapLines(cps) {
         const el = document.getElementById("display");
         const fontStr = displayFontString();
@@ -201,12 +221,12 @@
           await document.fonts.load(fontStr);
         } catch {}
         const pt = await loadPretext();
-        const prepared = pt.prepareWithSegments(cps, fontStr, {
+        const prepared = pt.prepareWithSegments(glueGlyphs(cps), fontStr, {
           whiteSpace: "pre-wrap",
         });
         const fontSize = parseFloat(getComputedStyle(el).fontSize) || 80;
         const { lines } = pt.layoutWithLines(prepared, el.clientWidth || 1, fontSize);
-        return lines.map((l) => l.text);
+        return lines.map((l) => l.text.split(WORD_JOINER).join(""));
       }
 
       // The single line-source used by BOTH the display and the export.
