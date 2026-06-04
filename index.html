@@ -353,15 +353,6 @@
         setBackground();
       }
 
-      let CHARMAP = {};
-      fetch("./charmap.json")
-        .then((r) => r.text())
-        .then((t) => {
-          // Tolerate trailing commas in the source JSON.
-          CHARMAP = JSON.parse(t.replace(/,(\s*[}\]])/g, "$1"));
-        })
-        .catch((e) => console.warn("Could not load charmap.json:", e));
-
       // ---- CPAL palette names ----
       // Browsers don't expose CPAL palette labels to CSS/JS, so we read them
       // out of the font binary ourselves: parse the sfnt table directory, then
@@ -461,45 +452,6 @@
       }
       buildPaletteSwitcher();
 
-      function glyphsKeydown(e) {
-        if (e.metaKey) return;
-        const mode = document.querySelector('input[name="mode"]:checked')?.value;
-        if (mode !== "glyphs") return;
-
-        // AltGr + Digit1..8 → tones E120..E127
-        // (AltGraph on Linux/Win, Option on Mac, ctrl+alt on Win all set altKey)
-        const altGr = e.getModifierState("AltGraph") || e.altKey;
-        if (altGr) {
-          const m = /^Digit([1-8])$/.exec(e.code);
-          if (m) {
-            const n = parseInt(m[1], 10) - 1;
-            e.preventDefault();
-            insertAtCursor(String.fromCharCode(0xe120 + n));
-          }
-          return;
-        }
-
-        if (e.ctrlKey) return;
-
-        // o / O → carriers (blank_backward / blank_forward)
-        if (e.key === "o" || e.key === "O") {
-          e.preventDefault();
-          insertAtCursor(
-            e.key === "o"
-              ? ABWUGIDA_MAP["blank_backward"]
-              : ABWUGIDA_MAP["blank_forward"]
-          );
-          return;
-        }
-
-        // Character-based charmap (consonants, vowels, special chars)
-        const ch = CHARMAP[e.key];
-        if (ch) {
-          e.preventDefault();
-          insertAtCursor(ch);
-        }
-      }
-
       function insertAtCursor(ch) {
         const textarea = document.getElementById("text");
         const start = textarea.selectionStart ?? textarea.value.length;
@@ -516,43 +468,66 @@
         const carrierCh = ABWUGIDA_MAP["blank_forward"];
         const namedEntries = (keys) =>
           keys.map((key) => ({ label: key, ch: phonemeToCps(key) }));
-        const hexRange = (start, end) => {
-          const out = [];
-          for (let c = start; c <= end; c++) {
-            out.push({
-              label: `U+${c.toString(16).toUpperCase()}`,
-              ch: String.fromCharCode(c),
-            });
-          }
-          return out;
-        };
         const codepointTitle = (ch) =>
           Array.from(ch)
             .map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase()}`)
             .join(" ");
+
+        // Tones, labelled with their Chao tone letters (the keys in the map
+        // that point at the E12x tone glyphs).
+        const toneEntries = ["˥", "˥˧", "˧˥", "˩", "˧˩", "˩˧", "˧"].map(
+          (t) => ({ label: t, ch: ABWUGIDA_MAP[t] })
+        );
+
+        // Accessories (E3xx) are the consonant bodies: each combines with a
+        // carrier to form a voiceless/voiced consonant pair. Label them by
+        // that IPA pair (e.g. E300 -> "p/b"), derived from the map so the
+        // labels stay in sync. Anything with no consonant pair (the emphatic
+        // body E316) falls back to its modifier symbol.
+        const accVoicing = {}; // accessory char -> { voiceless, voiced }
+        for (const [phon, cps] of Object.entries(ABWUGIDA_MAP)) {
+          const arr = Array.from(cps);
+          if (arr.length !== 2 || arr[1] < "" || arr[1] > "") continue;
+          const slot =
+            arr[0] === "" ? "voiceless" : arr[0] === "" ? "voiced" : null;
+          if (!slot) continue;
+          (accVoicing[arr[1]] ||= {})[slot] ||= phon;
+        }
+        const modLabel = {}; // accessory char -> modifier symbol (fallback)
+        for (const [mod, cp] of Object.entries(ABWUGIDA_MODIFIERS)) modLabel[cp] ||= mod;
+        const accEntries = [];
+        for (let c = 0xe300; c <= 0xe316; c++) {
+          const ch = String.fromCharCode(c);
+          const pair = accVoicing[ch];
+          const label = pair
+            ? [pair.voiceless, pair.voiced].filter(Boolean).join("/")
+            : modLabel[ch] || codepointTitle(ch);
+          accEntries.push({ label, ch });
+        }
+
+        // Carriers, plus their variation-selector forms. The font defines
+        // VS1..VS9 (U+FE00..FE08) for both carriers; each numbered button
+        // inserts a bare variation selector, which applies to the carrier
+        // before the cursor. They preview on a (greyed) carrier.
+        const carrierEntries = [
+          { label: "voiceless", ch: "" },
+          { label: "voiced", ch: "" },
+          ...Array.from({ length: 9 }, (_, i) => ({
+            label: String(i + 1),
+            ch: String.fromCharCode(0xfe00 + i),
+            combining: true,
+          })),
+        ];
+
         const groups = [
-          {
-            name: "Consonants",
-            entries: namedEntries([
-              "p", "b", "t", "d", "k", "g", "q", "ʔ",
-              "tʃ", "dʒ", "s", "z", "ʃ", "ʒ", "f", "v",
-              "θ", "ð", "x", "ɣ", "ħ", "ʕ", "h",
-              "m", "n", "ɲ", "ŋ", "r", "l", "w", "j",
-              "tˤ", "dˤ", "sˤ", "zˤ", "ɫ", "ðˤ", "ɥ",
-            ]),
-          },
           {
             name: "Vowels",
             isCombining: true,
             entries: namedEntries(["aː", "iː", "uː", "a", "i", "u"]),
           },
-          {
-            name: "Tones",
-            isCombining: true,
-            entries: hexRange(0xe120, 0xe127),
-          },
-          { name: "Carriers", entries: hexRange(0xe200, 0xe201) },
-          { name: "Accessories (E3xx)", entries: hexRange(0xe300, 0xe316) },
+          { name: "Tones", isCombining: true, entries: toneEntries },
+          { name: "Carriers", entries: carrierEntries },
+          { name: "Accessories", entries: accEntries, hideCodepoint: true },
         ];
 
         const container = document.getElementById("clicker");
@@ -563,17 +538,20 @@
           container.appendChild(heading);
           const grid = document.createElement("div");
           grid.className = "clicker-grid";
-          group.entries.forEach(({ label, ch }) => {
+          group.entries.forEach(({ label, ch, combining }) => {
             if (!ch) return;
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "clicker-btn";
-            btn.title = `${label} (${codepointTitle(ch)})`;
+            btn.title = group.hideCodepoint
+              ? label
+              : `${label} (${codepointTitle(ch)})`;
             btn.onclick = () => insertAtCursor(ch);
             const glyph = document.createElement("span");
             glyph.className = "clicker-glyph";
-            if (group.isCombining) {
-              // Combining marks need a (greyed) carrier so the glyph renders.
+            if (group.isCombining || combining) {
+              // Combining marks (and bare variation selectors) need a (greyed)
+              // carrier so the glyph renders.
               const carrier = document.createElement("span");
               carrier.className = "clicker-carrier";
               carrier.textContent = carrierCh;
@@ -1160,14 +1138,6 @@
         border-top: 1px solid var(--border);
         padding-top: 12px;
       }
-      .layer-swatch {
-        display: inline-block;
-        width: 16px;
-        height: 16px;
-        border-radius: 3px;
-        border: 1px solid var(--border);
-        flex-shrink: 0;
-      }
     </style>
   </head>
   <body>
@@ -1375,10 +1345,8 @@
           </div>
         </div>
         <div class="export-layers" id="export-layers" hidden>
-          <span class="muted">Layers (.zip)</span>
+          <span class="muted">Layers</span>
           <div class="export-actions">
-            <span class="layer-swatch" style="background:#000"></span>
-            <span class="layer-swatch" id="export-color-swatch"></span>
             <button type="button" class="btn" id="export-layers-svg-btn" disabled>SVG</button>
             <button type="button" class="btn btn-accent" id="export-layers-png-btn" disabled>PNG</button>
           </div>
@@ -1389,7 +1357,6 @@
 
     <script type="text/javascript">
       buildClicker();
-      document.getElementById("text").addEventListener("keydown", glyphsKeydown);
 
       // Options drawer
       (function () {
@@ -1448,7 +1415,6 @@
         const layersEl = document.getElementById("export-layers");
         const layersSvgBtn = document.getElementById("export-layers-svg-btn");
         const layersPngBtn = document.getElementById("export-layers-png-btn");
-        const colorSwatch = document.getElementById("export-color-swatch");
 
         let hb = null; // the loaded module
         const fontCache = {}; // weight -> hb.Font
@@ -1694,7 +1660,6 @@
               return null;
             })();
             if (colorFill) {
-              colorSwatch.style.background = colorFill;
               layersEl.hidden = false;
               layersSvgBtn.disabled = false;
               layersPngBtn.disabled = false;
@@ -1758,16 +1723,18 @@
           else setStatus("PNG export failed.");
         }
 
-        // The black and color layers are exported together as a single .zip so
-        // they don't have to be downloaded one at a time. The bytes for each
-        // layer come from the same filterSvgLayer() / rasterize path the SVG
-        // and PNG exports use.
-        function layerSvgBytes(keepBlack) {
-          const layerEl = filterSvgLayer(keepBlack);
-          return new TextEncoder().encode(layerEl.outerHTML);
+        // The black and color layers download together — one click yields two
+        // files, so they don't have to be saved one at a time. Browsers allow
+        // multiple downloads from a single user gesture; a small gap before the
+        // second keeps it from being dropped/coalesced. Each layer comes from
+        // the same filterSvgLayer() / rasterize path the SVG and PNG use.
+        function svgLayerBlob(keepBlack) {
+          return new Blob([filterSvgLayer(keepBlack).outerHTML], {
+            type: "image/svg+xml",
+          });
         }
 
-        async function layerPngBytes(keepBlack) {
+        async function pngLayerBlob(keepBlack) {
           const [, , vw, vh] = (svgEl.getAttribute("viewBox") ?? DEFAULT_VIEWBOX)
             .split(/\s+/)
             .map(Number);
@@ -1793,86 +1760,27 @@
           canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
           URL.revokeObjectURL(url);
-          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-          return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
-        }
-
-        // Minimal store-only (uncompressed) ZIP writer — enough to bundle a
-        // couple of small files into one download without pulling in a
-        // dependency. files: [{ name, data: Uint8Array }].
-        function crc32(bytes) {
-          let crc = ~0;
-          for (let i = 0; i < bytes.length; i++) {
-            crc ^= bytes[i];
-            for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-          }
-          return ~crc >>> 0;
-        }
-        function makeZip(files) {
-          const enc = new TextEncoder();
-          const u16 = (n) => [n & 0xff, (n >> 8) & 0xff];
-          const u32 = (n) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
-          const parts = [];
-          const central = [];
-          let offset = 0;
-          for (const f of files) {
-            const name = enc.encode(f.name);
-            const crc = crc32(f.data);
-            const size = f.data.length;
-            const local = new Uint8Array([
-              ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), // sig, ver, flags, method=store
-              ...u16(0), ...u16(0), // dos time, date
-              ...u32(crc), ...u32(size), ...u32(size),
-              ...u16(name.length), ...u16(0),
-              ...name,
-            ]);
-            parts.push(local, f.data);
-            central.push({ name, crc, size, offset });
-            offset += local.length + size;
-          }
-          const dir = [];
-          let dirSize = 0;
-          for (const c of central) {
-            const rec = new Uint8Array([
-              ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0),
-              ...u16(0), ...u16(0),
-              ...u32(c.crc), ...u32(c.size), ...u32(c.size),
-              ...u16(c.name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
-              ...u32(0), ...u32(c.offset),
-              ...c.name,
-            ]);
-            dir.push(rec);
-            dirSize += rec.length;
-          }
-          const end = new Uint8Array([
-            ...u32(0x06054b50), ...u16(0), ...u16(0),
-            ...u16(central.length), ...u16(central.length),
-            ...u32(dirSize), ...u32(offset), ...u16(0),
-          ]);
-          return new Blob([...parts, ...dir, end], { type: "application/zip" });
+          return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
         }
 
         function downloadLayersSvg() {
-          const zip = makeZip([
-            { name: "abwugida-black.svg", data: layerSvgBytes(true) },
-            { name: "abwugida-color.svg", data: layerSvgBytes(false) },
-          ]);
-          triggerDownload(zip, "abwugida-layers-svg.zip");
+          triggerDownload(svgLayerBlob(true), "abwugida-black.svg");
+          setTimeout(
+            () => triggerDownload(svgLayerBlob(false), "abwugida-color.svg"),
+            150
+          );
         }
 
         async function downloadLayersPng() {
           setStatus("Rendering layers…");
-          const black = await layerPngBytes(true);
-          const color = await layerPngBytes(false);
+          const black = await pngLayerBlob(true);
+          const color = await pngLayerBlob(false);
           if (!black || !color) {
             setStatus("PNG layer export failed.");
             return;
           }
-          const zip = makeZip([
-            { name: "abwugida-black.png", data: black },
-            { name: "abwugida-color.png", data: color },
-          ]);
-          triggerDownload(zip, "abwugida-layers-png.zip");
+          triggerDownload(black, "abwugida-black.png");
+          setTimeout(() => triggerDownload(color, "abwugida-color.png"), 150);
           setStatus("");
         }
 
