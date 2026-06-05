@@ -358,6 +358,17 @@
       // module via #area-w / #area-h / #area-dpi. Persisted across visits.
       const AREA_KEY = "abwugida.area";
 
+      // Frame the on-screen output card to the label's aspect ratio so the
+      // proportions are visible while editing (glyphs stay at actual size).
+      function applyOutputFrame() {
+        const card = document.querySelector(".output-card");
+        const w = parseFloat(document.getElementById("area-w").value);
+        const h = parseFloat(document.getElementById("area-h").value);
+        const active = w > 0 && h > 0;
+        card.classList.toggle("framed", active);
+        card.style.aspectRatio = active ? `${w} / ${h}` : "";
+      }
+
       function setArea() {
         const w = document.getElementById("area-w").value;
         const h = document.getElementById("area-h").value;
@@ -365,6 +376,7 @@
         try {
           localStorage.setItem(AREA_KEY, JSON.stringify({ w, h, dpi }));
         } catch {}
+        applyOutputFrame();
         if (window.rerenderExportPreview) window.rerenderExportPreview();
       }
 
@@ -384,6 +396,7 @@
             if (saved.dpi) document.getElementById("area-dpi").value = saved.dpi;
           }
         } catch {}
+        applyOutputFrame();
       }
 
       // ---- CPAL palette names ----
@@ -800,6 +813,15 @@
           linear-gradient(-45deg, transparent 75%, #e9e9ee 75%);
         background-size: 16px 16px;
         background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      }
+      /* When a fixed print area is set, frame the output card to the label's
+         aspect ratio (its height follows its width via aspect-ratio), with a
+         dashed edge. Glyphs stay at their actual size and are clipped at the
+         label bounds. */
+      .output-card.framed {
+        min-height: 0;
+        border-style: dashed;
+        overflow: hidden;
       }
       #display {
         font-family: "Abwugida";
